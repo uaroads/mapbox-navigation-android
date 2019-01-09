@@ -1,11 +1,15 @@
 package com.mapbox.services.android.navigation.ui.v5.instruction;
 
 import android.support.annotation.NonNull;
+import android.widget.TextView;
 
 import com.mapbox.api.directions.v5.models.BannerComponents;
+import com.mapbox.api.directions.v5.models.BannerText;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import timber.log.Timber;
 
 public class BannerComponentTree {
   private final NodeCreator[] nodeCreators;
@@ -16,9 +20,9 @@ public class BannerComponentTree {
    *
    * @param nodeCreators coordinators in the order that they should process banner components
    */
-  BannerComponentTree(@NonNull List<BannerComponents> bannerComponents, NodeCreator... nodeCreators) {
+  BannerComponentTree(@NonNull BannerText bannerText, NodeCreator... nodeCreators) {
     this.nodeCreators = nodeCreators;
-    bannerComponentNodes = parseBannerComponents(bannerComponents);
+    bannerComponentNodes = parseBannerComponents(bannerText);
   }
 
   /**
@@ -28,25 +32,36 @@ public class BannerComponentTree {
    * @param bannerComponents to parse
    * @return the list of nodes representing the bannerComponents
    */
-  private List<BannerComponentNode> parseBannerComponents(List<BannerComponents> bannerComponents) {
+  private List<BannerComponentNode> parseBannerComponents(BannerText bannerText) {
     int length = 0;
     List<BannerComponentNode> bannerComponentNodes = new ArrayList<>();
 
-    for (BannerComponents components : bannerComponents) {
-      BannerComponentNode node = null;
+    for (BannerComponents components : bannerText.components()) {
+      Timber.d("~~~~~~~~~~~~~~~~~ " + components.type() + " " + components.text() + " abbr: " +
+        components.abbreviation() + " abbr priority: " + components.abbreviationPriority() + " " +
+        "modifier " + bannerText.modifier());
+
+//      if (components.directions() != null) {
+//        for (String direction : components.directions()) {
+//          Timber.d("~~~~~~~~~~~~~~~~~ " + direction);
+//        }
+//      }
+        BannerComponentNode node = null;
 
       for (NodeCreator nodeCreator : nodeCreators) {
         if (nodeCreator.isNodeType(components)) {
-          node = nodeCreator.setupNode(components, bannerComponentNodes.size(), length);
+          node = nodeCreator.setupNode(components, bannerComponentNodes.size(), length,
+            bannerText.modifier());
           break;
         }
       }
 
       if (node != null) {
         bannerComponentNodes.add(node);
-        length += components.text().length() + 1;
+        length += components.text().length() + 1; //node.length?
       }
     }
+    Timber.d("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
 
     return bannerComponentNodes;
   }
@@ -59,7 +74,7 @@ public class BannerComponentTree {
    *
    * @param textView in which to load text and images
    */
-  void loadInstruction(InstructionTextView textView) {
+  void loadInstruction(TextView textView) {
     for (NodeCreator nodeCreator : nodeCreators) {
       nodeCreator.preProcess(textView, bannerComponentNodes);
     }
