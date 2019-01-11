@@ -274,7 +274,6 @@ class ExampleActivity : HistoryActivity(), ExampleView {
   private fun setupWith(savedInstanceState: Bundle?) {
     mapView.onCreate(savedInstanceState)
 
-    instructionView.retrieveFeedbackButton().hide()
     instructionView.retrieveSoundButton().hide()
 
     val behavior = BottomSheetBehavior.from(autocompleteBottomSheet)

@@ -46,6 +46,22 @@ public class NavigationLauncher {
     activity.startActivity(navigationActivity);
   }
 
+  public static <T extends Activity> void startNavigationCustom(Activity activity, Class<T> activityClass, NavigationLauncherOptions options) {
+    SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(activity);
+    SharedPreferences.Editor editor = preferences.edit();
+
+    storeDirectionsRouteValue(options, editor);
+    storeConfiguration(options, editor);
+
+    storeThemePreferences(options, editor);
+
+    editor.apply();
+
+    Intent navigationActivity = new Intent(activity, activityClass);
+    storeInitialMapPosition(options, navigationActivity);
+    activity.startActivity(navigationActivity);
+  }
+
   /**
    * Used to extract the route used to launch the drop-in UI.
    * <p>
