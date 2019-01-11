@@ -472,15 +472,6 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
   }
 
   /**
-   * Returns the feedback button for sending feedback about navigation
-   *
-   * @return feedback button
-   */
-  public NavigationButton retrieveFeedbackButton() {
-    return instructionView.retrieveFeedbackButton();
-  }
-
-  /**
    * Returns the re-center button for recentering on current location
    *
    * @return recenter button

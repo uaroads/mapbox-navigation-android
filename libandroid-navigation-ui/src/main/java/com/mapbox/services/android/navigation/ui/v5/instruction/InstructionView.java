@@ -101,7 +101,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
   private DistanceFormatter distanceFormatter;
   private boolean isRerouting;
   private SoundButton soundButton;
-  private FeedbackButton feedbackButton;
 
   public InstructionView(Context context) {
     this(context, null);
@@ -370,16 +369,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
   }
 
   /**
-   * Gets the feedback button which is used for sending feedback, for uses such as adding listeners
-   * and hiding the button.
-   *
-   * @return feedback button with {@link NavigationButton} API
-   */
-  public NavigationButton retrieveFeedbackButton() {
-    return feedbackButton;
-  }
-
-  /**
    * Returns the {@link NavigationAlertView} that is shown during off-route events with
    * "Report a Problem" text.
    *
@@ -421,7 +410,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
     instructionListLayout = findViewById(R.id.instructionListLayout);
     rvInstructions = findViewById(R.id.rvInstructions);
     soundButton = findViewById(R.id.soundLayout);
-    feedbackButton = findViewById(R.id.feedbackLayout);
   }
 
   /**
@@ -504,13 +492,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
   }
 
   private void initializeButtonListeners() {
-    feedbackButton.addOnClickListener(new OnClickListener() {
-      @Override
-      public void onClick(View view) {
-        navigationViewModel.recordFeedback(FeedbackEvent.FEEDBACK_SOURCE_UI);
-        showFeedbackBottomSheet();
-      }
-    });
     soundButton.addOnClickListener(new OnClickListener() {
       @Override
       public void onClick(View view) {
@@ -520,7 +501,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
   }
 
   private void showButtons() {
-    feedbackButton.show();
     soundButton.show();
   }
 
@@ -535,7 +515,6 @@ public class InstructionView extends RelativeLayout implements FeedbackBottomShe
   }
 
   private void initializeButtons() {
-    feedbackButton.hide();
     soundButton.hide();
   }
 
