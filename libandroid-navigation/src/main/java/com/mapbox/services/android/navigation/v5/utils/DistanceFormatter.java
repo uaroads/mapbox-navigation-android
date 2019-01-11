@@ -73,13 +73,10 @@ public class DistanceFormatter {
     this.language = locale.getLanguage();
     numberFormat = NumberFormat.getNumberInstance(locale);
 
-    if (!DirectionsCriteria.IMPERIAL.equals(unitType) && !DirectionsCriteria.METRIC.equals(unitType)) {
-      unitType = localeUtils.getUnitTypeForDeviceLocale(context);
-    }
-    this.unitType = unitType;
+    this.unitType = DirectionsCriteria.METRIC;
 
-    largeUnit = DirectionsCriteria.IMPERIAL.equals(unitType) ? UNIT_MILES : UNIT_KILOMETERS;
-    smallUnit = DirectionsCriteria.IMPERIAL.equals(unitType) ? UNIT_FEET : UNIT_METERS;
+    largeUnit = UNIT_KILOMETERS;
+    smallUnit = UNIT_METERS;
   }
 
   /**
