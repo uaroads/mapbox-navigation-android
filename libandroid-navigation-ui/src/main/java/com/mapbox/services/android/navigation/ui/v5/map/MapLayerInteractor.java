@@ -1,5 +1,7 @@
 package com.mapbox.services.android.navigation.ui.v5.map;
 
+import android.graphics.Color;
+
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.style.layers.Layer;
 import com.mapbox.mapboxsdk.style.layers.LineLayer;
@@ -9,30 +11,42 @@ import java.util.List;
 
 import static com.mapbox.mapboxsdk.style.layers.Property.NONE;
 import static com.mapbox.mapboxsdk.style.layers.Property.VISIBLE;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineColor;
+import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineWidth;
 import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.visibility;
+import static com.mapbox.services.android.navigation.ui.v5.map.NavigationMapboxMap.STREETS_LAYER_ID;
 
 class MapLayerInteractor {
 
-  private MapboxMap mapboxMap;
+  private static final float DEFAULT_WIDTH = 20f;
+  private static final int LAST_INDEX = 0;
+
+  private final MapboxMap mapboxMap;
 
   MapLayerInteractor(MapboxMap mapboxMap) {
     this.mapboxMap = mapboxMap;
   }
 
-  Layer retrieveLayerFromId(String layerId) {
-    return mapboxMap.getLayerAs(layerId);
-  }
-
   void updateLayerVisibility(boolean isVisible, String layerIdentifier) {
     // TODO add sourceIdentifier logic when https://github.com/mapbox/mapbox-gl-native/issues/12691 lands
-    List<Layer> layers = mapboxMap.getLayers();
+    List<Layer> layers = mapboxMap.getStyle().getLayers();
     updateLayerWithVisibility(layerIdentifier, layers, isVisible);
   }
 
   boolean isLayerVisible(String layerIdentifier) {
     // TODO add sourceIdentifier logic when https://github.com/mapbox/mapbox-gl-native/issues/12691 lands
-    List<Layer> layers = mapboxMap.getLayers();
+    List<Layer> layers = mapboxMap.getStyle().getLayers();
     return findLayerVisibility(layerIdentifier, layers);
+  }
+
+  void addStreetsLayer(String sourceId, String sourceLayer) {
+    LineLayer streetsLayer = new LineLayer(STREETS_LAYER_ID, sourceId)
+      .withProperties(
+        lineWidth(DEFAULT_WIDTH),
+        lineColor(Color.WHITE)
+      )
+      .withSourceLayer(sourceLayer);
+    mapboxMap.getStyle().addLayerAt(streetsLayer, LAST_INDEX);
   }
 
   private void updateLayerWithVisibility(String layerIdentifier, List<Layer> layers, boolean isVisible) {

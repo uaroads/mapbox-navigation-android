@@ -3,40 +3,25 @@ package com.mapbox.services.android.navigation.ui.v5.map;
 import android.os.Parcel;
 import android.os.Parcelable;
 
-import com.mapbox.services.android.navigation.ui.v5.camera.NavigationCamera;
-
 public class NavigationMapboxMapInstanceState implements Parcelable {
 
-  private final MapPaddingInstanceState mapPaddingInstanceState;
-  @NavigationCamera.TrackingMode
-  private final int cameraTrackingMode;
+  private final NavigationMapSettings settings;
 
-  NavigationMapboxMapInstanceState(int[] currentPadding,
-                                   boolean shouldUseDefaultPadding,
-                                   @NavigationCamera.TrackingMode int cameraTrackingMode) {
-
-    this.mapPaddingInstanceState = new MapPaddingInstanceState(currentPadding, shouldUseDefaultPadding);
-    this.cameraTrackingMode = cameraTrackingMode;
+  NavigationMapboxMapInstanceState(NavigationMapSettings settings) {
+    this.settings = settings;
   }
 
-  MapPaddingInstanceState retrieveMapPadding() {
-    return mapPaddingInstanceState;
-  }
-
-  @NavigationCamera.TrackingMode
-  int getCameraTrackingMode() {
-    return cameraTrackingMode;
+  NavigationMapSettings retrieveSettings() {
+    return settings;
   }
 
   private NavigationMapboxMapInstanceState(Parcel in) {
-    mapPaddingInstanceState = in.readParcelable(MapPaddingInstanceState.class.getClassLoader());
-    cameraTrackingMode = in.readInt();
+    settings = in.readParcelable(NavigationMapSettings.class.getClassLoader());
   }
 
   @Override
   public void writeToParcel(Parcel dest, int flags) {
-    dest.writeParcelable(mapPaddingInstanceState, flags);
-    dest.writeInt(cameraTrackingMode);
+    dest.writeParcelable(settings, flags);
   }
 
   @Override
@@ -46,7 +31,6 @@ public class NavigationMapboxMapInstanceState implements Parcelable {
 
   public static final Creator<NavigationMapboxMapInstanceState> CREATOR =
     new Creator<NavigationMapboxMapInstanceState>() {
-
       @Override
       public NavigationMapboxMapInstanceState createFromParcel(Parcel in) {
         return new NavigationMapboxMapInstanceState(in);

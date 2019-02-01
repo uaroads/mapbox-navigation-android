@@ -19,6 +19,7 @@ import android.widget.Toast
 import com.mapbox.geojson.BoundingBox
 import com.mapbox.mapboxsdk.Mapbox
 import com.mapbox.mapboxsdk.maps.MapboxMap
+import com.mapbox.mapboxsdk.maps.Style
 import com.mapbox.mapboxsdk.style.layers.FillLayer
 import com.mapbox.mapboxsdk.style.layers.PropertyFactory.fillColor
 import com.mapbox.mapboxsdk.style.sources.GeoJsonSource
@@ -49,6 +50,10 @@ class OfflineRegionDownloadActivity : AppCompatActivity(), RouteTileDownloadList
                     southWest.longitude, southWest.latitude,
                     northEast.longitude, northEast.latitude)
         }
+    private val mapboxOfflineRouter: MapboxOfflineRouter
+        get() {
+            return MapboxOfflineRouter(obtainOfflineDirectory())
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,17 +65,17 @@ class OfflineRegionDownloadActivity : AppCompatActivity(), RouteTileDownloadList
     }
 
     fun setupSpinner() {
-        MapboxOfflineRouter("")
-            .fetchAvailableTileVersions(Mapbox.getAccessToken(),
-                object : OnTileVersionsFoundCallback {
-                override fun onVersionsFound(availableVersions: MutableList<String>) {
-                    setupSpinner(availableVersions)
-                }
+        mapboxOfflineRouter
+                .fetchAvailableTileVersions(Mapbox.getAccessToken(),
+                        object : OnTileVersionsFoundCallback {
+                            override fun onVersionsFound(availableVersions: MutableList<String>) {
+                                setupSpinner(availableVersions)
+                            }
 
-                override fun onError(error: OfflineError) {
-                    onVersionFetchFailed()
-                }
-            })
+                            override fun onError(error: OfflineError) {
+                                onVersionFetchFailed()
+                            }
+                        })
     }
 
     fun onVersionFetchFailed() {
@@ -113,17 +118,13 @@ class OfflineRegionDownloadActivity : AppCompatActivity(), RouteTileDownloadList
     private fun setupMapView(savedInstanceState: Bundle?) {
         mapView.onCreate(savedInstanceState)
         mapView.getMapAsync { mapboxMap ->
+            mapboxMap.setStyle(Style.LIGHT) {
+                it.addSource(GeoJsonSource("bounding-box-source"))
+                it.addLayer(FillLayer("bounding-box-layer", "bounding-box-source")
+                        .withProperties(fillColor(Color.parseColor("#50667F"))))
+            }
             this.mapboxMap = mapboxMap
             mapboxMap.uiSettings.isRotateGesturesEnabled = false
-            addBoundingBoxToMap()
-        }
-    }
-
-    private fun addBoundingBoxToMap() {
-        mapboxMap.apply {
-            addSource(GeoJsonSource("bounding-box-source"))
-            addLayer(FillLayer("bounding-box-layer", "bounding-box-source")
-                    .withProperties(fillColor(Color.parseColor("#50667F"))))
         }
     }
 
@@ -161,9 +162,7 @@ class OfflineRegionDownloadActivity : AppCompatActivity(), RouteTileDownloadList
                 .version(versionSpinner.selectedItem as String)
                 .boundingBox(boundingBox)
 
-        val router = MapboxOfflineRouter(obtainOfflineDirectory())
-
-        router.downloadTiles(builder.build(), this)
+        mapboxOfflineRouter.downloadTiles(builder.build(), this)
     }
 
     private fun obtainOfflineDirectory(): String {

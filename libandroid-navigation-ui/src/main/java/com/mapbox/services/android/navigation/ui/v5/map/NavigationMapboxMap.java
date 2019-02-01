@@ -1,19 +1,19 @@
 package com.mapbox.services.android.navigation.ui.v5.map;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.graphics.PointF;
 import android.location.Location;
 import android.os.Bundle;
 import android.os.PersistableBundle;
+import android.support.annotation.AnyRes;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.FragmentActivity;
 
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.geojson.Point;
-import com.mapbox.mapboxsdk.annotations.Icon;
-import com.mapbox.mapboxsdk.annotations.Marker;
-import com.mapbox.mapboxsdk.annotations.MarkerOptions;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.location.LocationComponent;
 import com.mapbox.mapboxsdk.location.LocationComponentOptions;
@@ -22,7 +22,8 @@ import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
-import com.mapbox.mapboxsdk.style.layers.LineLayer;
+import com.mapbox.mapboxsdk.plugins.annotation.SymbolManager;
+import com.mapbox.mapboxsdk.style.sources.Source;
 import com.mapbox.mapboxsdk.style.sources.VectorSource;
 import com.mapbox.services.android.navigation.ui.v5.NavigationSnapshotReadyCallback;
 import com.mapbox.services.android.navigation.ui.v5.R;
@@ -32,11 +33,10 @@ import com.mapbox.services.android.navigation.ui.v5.route.NavigationMapRoute;
 import com.mapbox.services.android.navigation.ui.v5.route.OnRouteSelectionChangeListener;
 import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineColor;
-import static com.mapbox.mapboxsdk.style.layers.PropertyFactory.lineWidth;
+import static com.mapbox.services.android.navigation.ui.v5.map.NavigationSymbolManager.MAPBOX_NAVIGATION_MARKER_NAME;
 import static com.mapbox.services.android.navigation.v5.navigation.NavigationConstants.NAVIGATION_MINIMUM_MAP_ZOOM;
 
 /**
@@ -50,23 +50,32 @@ import static com.mapbox.services.android.navigation.v5.navigation.NavigationCon
 public class NavigationMapboxMap {
 
   static final String STREETS_LAYER_ID = "streetsLayer";
-  private static final String MAPBOX_STREETS_V7 = "mapbox://mapbox.mapbox-streets-v7";
-  private static final String STREETS_SOURCE_ID = "streetsSource";
-  private static final String ROAD_LABEL = "road_label";
-  private static final float DEFAULT_WIDTH = 20f;
-  private static final int LAST_INDEX = 0;
+  private static final String MAPBOX_STREETS_V7_URL = "mapbox.mapbox-streets-v7";
+  private static final String MAPBOX_STREETS_V8_URL = "mapbox.mapbox-streets-v8";
+  private static final String STREETS_SOURCE_ID = "com.mapbox.services.android.navigation.streets";
+  private static final String STREETS_V7_ROAD_LABEL = "road_label";
+  private static final String STREETS_V8_ROAD_LABEL = "road";
   private static final String INCIDENTS_LAYER_ID = "closures";
   private static final String TRAFFIC_LAYER_ID = "traffic";
   private static final int[] ZERO_MAP_PADDING = {0, 0, 0, 0};
-
+  private static final double NAVIGATION_MAXIMUM_MAP_ZOOM = 18d;
+  private final CopyOnWriteArrayList<OnWayNameChangedListener> onWayNameChangedListeners
+    = new CopyOnWriteArrayList<>();
+  private final MapWayNameChangedListener internalWayNameChangedListener
+    = new MapWayNameChangedListener(onWayNameChangedListeners);
+  private NavigationMapSettings settings = new NavigationMapSettings();
+  private MapView mapView;
   private MapboxMap mapboxMap;
-  private NavigationCamera mapCamera;
-  private NavigationMapRoute mapRoute;
   private LocationComponent locationComponent;
   private MapPaddingAdjustor mapPaddingAdjustor;
-  private MapWayName mapWayName;
+  private NavigationSymbolManager navigationSymbolManager;
   private MapLayerInteractor layerInteractor;
-  private List<Marker> mapMarkers = new ArrayList<>();
+  private NavigationMapRoute mapRoute;
+  private NavigationCamera mapCamera;
+  @Nullable
+  private MapWayName mapWayName;
+  @Nullable
+  private MapFpsDelegate mapFpsDelegate;
 
   /**
    * Constructor that can be used once {@link com.mapbox.mapboxsdk.maps.OnMapReadyCallback}
@@ -76,11 +85,12 @@ public class NavigationMapboxMap {
    * @param mapboxMap for APIs to interact with the map
    */
   public NavigationMapboxMap(@NonNull MapView mapView, @NonNull MapboxMap mapboxMap) {
+    this.mapView = mapView;
     this.mapboxMap = mapboxMap;
     initializeLocationComponent(mapView, mapboxMap);
     initializeMapPaddingAdjustor(mapView, mapboxMap);
+    initializeNavigationSymbolManager(mapView, mapboxMap);
     initializeMapLayerInteractor(mapboxMap);
-    initializeWayname(mapboxMap, mapPaddingAdjustor);
     initializeRoute(mapView, mapboxMap);
     initializeCamera(mapboxMap);
   }
@@ -101,8 +111,24 @@ public class NavigationMapboxMap {
   }
 
   // Package private (no modifier) for testing purposes
-  NavigationMapboxMap(MapWayName mapWayName) {
+  NavigationMapboxMap(@NonNull MapWayName mapWayName, @NonNull MapFpsDelegate mapFpsDelegate) {
     this.mapWayName = mapWayName;
+    this.mapFpsDelegate = mapFpsDelegate;
+  }
+
+  // Package private (no modifier) for testing purposes
+  NavigationMapboxMap(@NonNull MapWayName mapWayName, @NonNull MapFpsDelegate mapFpsDelegate,
+                      NavigationMapRoute mapRoute, NavigationCamera mapCamera) {
+    this.mapWayName = mapWayName;
+    this.mapFpsDelegate = mapFpsDelegate;
+    this.mapRoute = mapRoute;
+    this.mapCamera = mapCamera;
+  }
+
+  // Package private (no modifier) for testing purposes
+  NavigationMapboxMap(MapboxMap mapboxMap, MapLayerInteractor layerInteractor, MapPaddingAdjustor adjustor) {
+    this.layerInteractor = layerInteractor;
+    initializeWayName(mapboxMap, adjustor);
   }
 
   /**
@@ -115,8 +141,7 @@ public class NavigationMapboxMap {
    * @param position the point at which the marker will be placed
    */
   public void addMarker(Context context, Point position) {
-    Marker marker = createMarkerFromIcon(context, position);
-    mapMarkers.add(marker);
+    navigationSymbolManager.addMarkerFor(position);
   }
 
   /**
@@ -126,7 +151,7 @@ public class NavigationMapboxMap {
    * if no markers have been added.
    */
   public void clearMarkers() {
-    removeAllMarkers();
+    navigationSymbolManager.removeAllMarkerSymbols();
   }
 
   /**
@@ -137,7 +162,43 @@ public class NavigationMapboxMap {
    */
   public void updateLocation(Location location) {
     locationComponent.forceLocationUpdate(location);
-    updateMapWaynameWithLocation(location);
+    updateMapWayNameWithLocation(location);
+  }
+
+  /**
+   * The maximum preferred frames per second at which to render the map.
+   * <p>
+   * This property only takes effect when the application has limited resources, such as when
+   * the device is running on battery power. By default, this is set to 20fps.
+   * <p>
+   * Throttling will also only take effect when the camera is currently tracking
+   * the user location.
+   *
+   * @param maxFpsThreshold to be used to limit map frames per second
+   */
+  public void updateMapFpsThrottle(int maxFpsThreshold) {
+    if (mapFpsDelegate != null) {
+      mapFpsDelegate.updateMaxFpsThreshold(maxFpsThreshold);
+    } else {
+      settings.updateMaxFps(maxFpsThreshold);
+    }
+  }
+
+  /**
+   * Enabled by default, the navigation map will throttle frames per second when the application has
+   * limited resources, such as when the device is running on battery power.
+   * <p>
+   * Throttling will also only take effect when the camera is currently tracking
+   * the user location.
+   *
+   * @param isEnabled true to enable (default), false to render at device ability
+   */
+  public void updateMapFpsThrottleEnabled(boolean isEnabled) {
+    if (mapFpsDelegate != null) {
+      mapFpsDelegate.updateEnabled(isEnabled);
+    } else {
+      settings.updateMaxFpsEnabled(isEnabled);
+    }
   }
 
   /**
@@ -163,10 +224,13 @@ public class NavigationMapboxMap {
    *
    * @param navigation to add the progress listeners
    */
-  public void addProgressChangeListener(MapboxNavigation navigation) {
+  public void addProgressChangeListener(@NonNull MapboxNavigation navigation) {
+    initializeWayName(mapboxMap, mapPaddingAdjustor);
+    initializeFpsDelegate(mapView);
     mapRoute.addProgressChangeListener(navigation);
     mapCamera.addProgressChangeListener(navigation);
     mapWayName.addProgressChangeListener(navigation);
+    mapFpsDelegate.addProgressChangeListener(navigation);
   }
 
   /**
@@ -180,13 +244,10 @@ public class NavigationMapboxMap {
    * @param outState to store state variables
    */
   public void saveStateWith(String key, Bundle outState) {
-    int[] mapPadding = mapPaddingAdjustor.retrieveCurrentPadding();
-    boolean isUsingDefault = mapPaddingAdjustor.isUsingDefault();
-    @NavigationCamera.TrackingMode
-    int cameraTrackingMode = mapCamera.getCameraTrackingMode();
-    NavigationMapboxMapInstanceState instanceState = new NavigationMapboxMapInstanceState(
-      mapPadding, isUsingDefault, cameraTrackingMode
-    );
+    settings.updateCurrentPadding(mapPaddingAdjustor.retrieveCurrentPadding());
+    settings.updateShouldUseDefaultPadding(mapPaddingAdjustor.isUsingDefault());
+    settings.updateCameraTrackingMode(mapCamera.getCameraTrackingMode());
+    NavigationMapboxMapInstanceState instanceState = new NavigationMapboxMapInstanceState(settings);
     outState.putParcelable(key, instanceState);
   }
 
@@ -202,13 +263,8 @@ public class NavigationMapboxMap {
    * @param instanceState to extract state variables
    */
   public void restoreFrom(NavigationMapboxMapInstanceState instanceState) {
-    updateCameraTrackingMode(instanceState.getCameraTrackingMode());
-    MapPaddingInstanceState mapPadding = instanceState.retrieveMapPadding();
-    if (mapPadding.shouldUseDefault()) {
-      mapPaddingAdjustor.updatePaddingWithDefault();
-    } else {
-      adjustLocationIconWith(mapPadding.retrieveCurrentPadding());
-    }
+    settings = instanceState.retrieveSettings();
+    restoreMapWith(settings);
   }
 
   /**
@@ -345,7 +401,11 @@ public class NavigationMapboxMap {
    * @param isEnabled true to enable, false to disable
    */
   public void updateWaynameQueryMap(boolean isEnabled) {
-    mapWayName.updateWayNameQueryMap(isEnabled);
+    if (mapWayName != null) {
+      mapWayName.updateWayNameQueryMap(isEnabled);
+    } else {
+      settings.updateWayNameEnabled(isEnabled);
+    }
   }
 
   /**
@@ -355,7 +415,8 @@ public class NavigationMapboxMap {
   public void onStart() {
     mapCamera.onStart();
     mapRoute.onStart();
-    mapWayName.onStart();
+    handleWayNameOnStart();
+    handleFpsOnStart();
   }
 
   /**
@@ -365,7 +426,8 @@ public class NavigationMapboxMap {
   public void onStop() {
     mapCamera.onStop();
     mapRoute.onStop();
-    mapWayName.onStop();
+    handleWayNameOnStop();
+    handleFpsOnStop();
   }
 
   /**
@@ -456,7 +518,7 @@ public class NavigationMapboxMap {
    * @return true if added, false if listener was not found
    */
   public boolean addOnWayNameChangedListener(OnWayNameChangedListener listener) {
-    return mapWayName.addOnWayNameChangedListener(listener);
+    return onWayNameChangedListeners.add(listener);
   }
 
   /**
@@ -467,7 +529,7 @@ public class NavigationMapboxMap {
    * @return true if removed, false if listener was not found
    */
   public boolean removeOnWayNameChangedListener(OnWayNameChangedListener listener) {
-    return mapWayName.removeOnWayNameChangedListener(listener);
+    return onWayNameChangedListeners.remove(listener);
   }
 
   /**
@@ -486,49 +548,44 @@ public class NavigationMapboxMap {
     mapboxMap.snapshot(navigationSnapshotReadyCallback);
   }
 
+  @SuppressLint("MissingPermission")
   private void initializeLocationComponent(MapView mapView, MapboxMap map) {
+    locationComponent = map.getLocationComponent();
+    map.setMinZoomPreference(NAVIGATION_MINIMUM_MAP_ZOOM);
+    map.setMaxZoomPreference(NAVIGATION_MAXIMUM_MAP_ZOOM);
     Context context = mapView.getContext();
+    int locationLayerStyleRes = findLayerStyleRes(context);
+    LocationComponentOptions options = LocationComponentOptions.createFromAttributes(context, locationLayerStyleRes);
+    locationComponent.activateLocationComponent(context, map.getStyle(), null, options);
+    locationComponent.setLocationComponentEnabled(true);
+  }
+
+  private int findLayerStyleRes(Context context) {
     int locationLayerStyleRes = ThemeSwitcher.retrieveNavigationViewStyle(context,
       R.attr.navigationViewLocationLayerStyle);
+    if (!isValid(locationLayerStyleRes)) {
+      locationLayerStyleRes = R.style.NavigationLocationLayerStyle;
+    }
+    return locationLayerStyleRes;
+  }
 
-    LocationComponentOptions locationComponentOptions =
-      LocationComponentOptions.createFromAttributes(context, locationLayerStyleRes);
-    locationComponentOptions = locationComponentOptions.toBuilder().minZoom(NAVIGATION_MINIMUM_MAP_ZOOM).build();
-
-    locationComponent = map.getLocationComponent();
-    locationComponent.activateLocationComponent(context, null, locationComponentOptions);
-    locationComponent.setLocationComponentEnabled(true);
-    locationComponent.setRenderMode(RenderMode.GPS);
+  private boolean isValid(@AnyRes int resId) {
+    return resId != -1 && (resId & 0xff000000) != 0 && (resId & 0x00ff0000) != 0;
   }
 
   private void initializeMapPaddingAdjustor(MapView mapView, MapboxMap mapboxMap) {
     mapPaddingAdjustor = new MapPaddingAdjustor(mapView, mapboxMap);
   }
 
-  private void initializeCamera(MapboxMap map) {
-    mapCamera = new NavigationCamera(map, locationComponent);
-  }
-
-  private void initializeWayname(MapboxMap mapboxMap, MapPaddingAdjustor paddingAdjustor) {
-    initializeStreetsSource(mapboxMap);
-    WaynameFeatureFinder featureFinder = new WaynameFeatureFinder(mapboxMap);
-    mapWayName = new MapWayName(featureFinder, paddingAdjustor);
+  private void initializeNavigationSymbolManager(MapView mapView, MapboxMap mapboxMap) {
+    Bitmap markerBitmap = ThemeSwitcher.retrieveThemeMapMarker(mapView.getContext());
+    mapboxMap.getStyle().addImage(MAPBOX_NAVIGATION_MARKER_NAME, markerBitmap);
+    SymbolManager symbolManager = new SymbolManager(mapView, mapboxMap, mapboxMap.getStyle());
+    navigationSymbolManager = new NavigationSymbolManager(symbolManager);
   }
 
   private void initializeMapLayerInteractor(MapboxMap mapboxMap) {
     layerInteractor = new MapLayerInteractor(mapboxMap);
-  }
-
-  private void initializeStreetsSource(MapboxMap mapboxMap) {
-    VectorSource streetSource = new VectorSource(STREETS_SOURCE_ID, MAPBOX_STREETS_V7);
-    mapboxMap.addSource(streetSource);
-    LineLayer streetsLayer = new LineLayer(STREETS_LAYER_ID, STREETS_SOURCE_ID)
-      .withProperties(
-        lineWidth(DEFAULT_WIDTH),
-        lineColor(Color.WHITE)
-      )
-      .withSourceLayer(ROAD_LABEL);
-    mapboxMap.addLayerAt(streetsLayer, LAST_INDEX);
   }
 
   private void initializeRoute(MapView mapView, MapboxMap map) {
@@ -537,25 +594,122 @@ public class NavigationMapboxMap {
     mapRoute = new NavigationMapRoute(null, mapView, map, routeStyleRes);
   }
 
-  @NonNull
-  private Marker createMarkerFromIcon(Context context, Point position) {
-    LatLng markerPosition = new LatLng(position.latitude(),
-      position.longitude());
-    Icon markerIcon = ThemeSwitcher.retrieveThemeMapMarker(context);
-    return mapboxMap.addMarker(new MarkerOptions()
-      .position(markerPosition)
-      .icon(markerIcon));
+  private void initializeCamera(MapboxMap map) {
+    mapCamera = new NavigationCamera(map, locationComponent);
   }
 
-  private void removeAllMarkers() {
-    for (Marker marker : mapMarkers) {
-      mapboxMap.removeMarker(marker);
+  private void initializeWayName(MapboxMap mapboxMap, MapPaddingAdjustor paddingAdjustor) {
+    if (mapWayName != null) {
+      return;
+    }
+    initializeStreetsSource(mapboxMap);
+    WaynameFeatureFinder featureFinder = new WaynameFeatureFinder(mapboxMap);
+    mapWayName = new MapWayName(featureFinder, paddingAdjustor);
+    mapWayName.updateWayNameQueryMap(settings.isMapWayNameEnabled());
+    mapWayName.addOnWayNameChangedListener(internalWayNameChangedListener);
+  }
+
+  private void initializeStreetsSource(MapboxMap mapboxMap) {
+    List<Source> sources = mapboxMap.getStyle().getSources();
+    Source sourceV7 = findSourceByUrl(sources, MAPBOX_STREETS_V7_URL);
+    Source sourceV8 = findSourceByUrl(sources, MAPBOX_STREETS_V8_URL);
+
+    if (sourceV7 != null) {
+      layerInteractor.addStreetsLayer(sourceV7.getId(), STREETS_V7_ROAD_LABEL);
+    } else if (sourceV8 != null) {
+      layerInteractor.addStreetsLayer(sourceV8.getId(), STREETS_V8_ROAD_LABEL);
+    } else {
+      VectorSource streetSource = new VectorSource(STREETS_SOURCE_ID, MAPBOX_STREETS_V8_URL);
+      mapboxMap.getStyle().addSource(streetSource);
+      layerInteractor.addStreetsLayer(STREETS_SOURCE_ID, STREETS_V8_ROAD_LABEL);
     }
   }
 
-  private void updateMapWaynameWithLocation(Location location) {
+  @Nullable
+  private Source findSourceByUrl(List<Source> sources, String streetsUrl) {
+    for (Source source : sources) {
+      if (source instanceof VectorSource) {
+        VectorSource vectorSource = (VectorSource) source;
+        String url = vectorSource.getUrl();
+        if (url != null && url.contains(streetsUrl)) {
+          return vectorSource;
+        }
+      }
+    }
+    return null;
+  }
+
+  private void initializeFpsDelegate(MapView mapView) {
+    if (mapFpsDelegate != null) {
+      return;
+    }
+    MapBatteryMonitor batteryMonitor = new MapBatteryMonitor();
+    mapFpsDelegate = new MapFpsDelegate(mapView, batteryMonitor);
+    mapFpsDelegate.updateEnabled(settings.isMaxFpsEnabled());
+    mapFpsDelegate.updateMaxFpsThreshold(settings.retrieveMaxFps());
+    addFpsListenersToCamera();
+  }
+
+  private void addFpsListenersToCamera() {
+    mapCamera.addOnTrackingModeTransitionListener(mapFpsDelegate);
+    mapCamera.addOnTrackingModeChangedListener(mapFpsDelegate);
+  }
+
+  private void removeFpsListenersFromCamera() {
+    mapCamera.removeOnTrackingModeTransitionListener(mapFpsDelegate);
+    mapCamera.removeOnTrackingModeChangedListener(mapFpsDelegate);
+  }
+
+  private void updateMapWayNameWithLocation(Location location) {
+    if (mapWayName == null) {
+      return;
+    }
     LatLng latLng = new LatLng(location);
     PointF mapPoint = mapboxMap.getProjection().toScreenLocation(latLng);
     mapWayName.updateWayNameWithPoint(mapPoint);
+  }
+
+  private void restoreMapWith(NavigationMapSettings settings) {
+    updateCameraTrackingMode(settings.retrieveCameraTrackingMode());
+    if (settings.shouldUseDefaultPadding()) {
+      mapPaddingAdjustor.updatePaddingWithDefault();
+    } else {
+      adjustLocationIconWith(settings.retrieveCurrentPadding());
+    }
+    if (mapWayName != null) {
+      mapWayName.updateWayNameQueryMap(settings.isMapWayNameEnabled());
+    }
+    if (mapFpsDelegate != null) {
+      mapFpsDelegate.updateMaxFpsThreshold(settings.retrieveMaxFps());
+      mapFpsDelegate.updateEnabled(settings.isMaxFpsEnabled());
+    }
+  }
+
+  private void handleWayNameOnStart() {
+    if (mapWayName != null) {
+      mapWayName.onStart();
+      mapWayName.addOnWayNameChangedListener(internalWayNameChangedListener);
+    }
+  }
+
+  private void handleFpsOnStart() {
+    if (mapFpsDelegate != null) {
+      mapFpsDelegate.onStart();
+      addFpsListenersToCamera();
+    }
+  }
+
+  private void handleWayNameOnStop() {
+    if (mapWayName != null) {
+      mapWayName.onStop();
+      mapWayName.removeOnWayNameChangedListener(internalWayNameChangedListener);
+    }
+  }
+
+  private void handleFpsOnStop() {
+    if (mapFpsDelegate != null) {
+      mapFpsDelegate.onStop();
+      removeFpsListenersFromCamera();
+    }
   }
 }

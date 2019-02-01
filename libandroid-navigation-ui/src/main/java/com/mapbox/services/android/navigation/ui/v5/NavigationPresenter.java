@@ -47,7 +47,9 @@ class NavigationPresenter {
 
   void onRouteUpdate(DirectionsRoute directionsRoute) {
     view.drawRoute(directionsRoute);
-    if (!resumeState) {
+    if (resumeState && view.isRecenterButtonVisible()) {
+      view.updateCameraRouteOverview();
+    } else {
       view.startCamera(directionsRoute);
     }
   }
@@ -69,7 +71,7 @@ class NavigationPresenter {
   }
 
   void onWayNameChanged(@NonNull String wayName) {
-    if (TextUtils.isEmpty(wayName)) {
+    if (TextUtils.isEmpty(wayName) || view.isSummaryBottomSheetHidden()) {
       view.updateWayNameVisibility(false);
       return;
     }
