@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
+    <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="${enableCrashReporting}" />
+
     <application
         android:name=".NavigationApplication"
         android:allowBackup="true"
@@ -133,5 +135,12 @@
 
         <!-- Testing -->
         <activity android:name=".test.TestNavigationActivity"/>
+
+        <meta-data
+            android:name="com.mapbox.TestEventsServer"
+            android:value="api-events-staging.tilestream.net" />
+        <meta-data
+            android:name="com.mapbox.TestEventsAccessToken"
+            android:value="pk.eyJ1IjoiYmxzdGFnaW5nIiwiYSI6ImNpdDF3OHpoaTAwMDcyeXA5Y3Z0Nmk2dzEifQ.0IfB7v5Qbm2MGVYt8Kb8fg" />
     </application>
 </manifest>

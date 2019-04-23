@@ -19,18 +19,24 @@ class NavigationSymbolManager {
 
   NavigationSymbolManager(SymbolManager symbolManager) {
     this.symbolManager = symbolManager;
+    symbolManager.setIconAllowOverlap(true);
+    symbolManager.setIconIgnorePlacement(true);
   }
 
-  void addMarkerFor(Point position) {
+  void addDestinationMarkerFor(Point position) {
     SymbolOptions options = createSymbolOptionsFor(position);
-    Symbol markerSymbol = symbolManager.create(options);
-    mapMarkersSymbols.add(markerSymbol);
+    createSymbolFrom(options);
+  }
+
+  void addCustomSymbolFor(SymbolOptions options) {
+    createSymbolFrom(options);
   }
 
   void removeAllMarkerSymbols() {
     for (Symbol markerSymbol : mapMarkersSymbols) {
       symbolManager.delete(markerSymbol);
     }
+    mapMarkersSymbols.clear();
   }
 
   @NonNull
@@ -40,5 +46,10 @@ class NavigationSymbolManager {
     return new SymbolOptions()
       .withLatLng(markerPosition)
       .withIconImage(MAPBOX_NAVIGATION_MARKER_NAME);
+  }
+
+  private void createSymbolFrom(SymbolOptions options) {
+    Symbol symbol = symbolManager.create(options);
+    mapMarkersSymbols.add(symbol);
   }
 }

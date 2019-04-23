@@ -7,7 +7,6 @@ import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 
-import com.mapbox.api.directions.v5.DirectionsCriteria;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.mapboxsdk.camera.CameraPosition;
 import com.mapbox.services.android.navigation.ui.v5.listeners.NavigationListener;
@@ -131,10 +130,15 @@ public class MapboxNavigationActivity extends AppCompatActivity implements OnNav
 
   private void extractConfiguration(NavigationViewOptions.Builder options) {
     SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-    options.shouldSimulateRoute(preferences
-      .getBoolean(NavigationConstants.NAVIGATION_VIEW_SIMULATE_ROUTE, false));
-    options.directionsProfile(preferences
-      .getString(NavigationConstants.NAVIGATION_VIEW_ROUTE_PROFILE_KEY, DirectionsCriteria.PROFILE_DRIVING_TRAFFIC));
+    options.shouldSimulateRoute(preferences.getBoolean(NavigationConstants.NAVIGATION_VIEW_SIMULATE_ROUTE, false));
+    String offlinePath = preferences.getString(NavigationConstants.OFFLINE_PATH_KEY, "");
+    if (!offlinePath.isEmpty()) {
+      options.offlineRoutingTilesPath(offlinePath);
+    }
+    String offlineVersion = preferences.getString(NavigationConstants.OFFLINE_VERSION_KEY, "");
+    if (!offlineVersion.isEmpty()) {
+      options.offlineRoutingTilesVersion(offlineVersion);
+    }
   }
 
   private void finishNavigation() {

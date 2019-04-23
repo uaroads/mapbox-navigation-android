@@ -2,6 +2,7 @@ package com.mapbox.services.android.navigation.v5.navigation;
 
 import android.content.Context;
 import android.support.annotation.FloatRange;
+import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
@@ -19,8 +20,12 @@ import com.mapbox.core.utils.TextUtils;
 import com.mapbox.geojson.Point;
 import com.mapbox.services.android.navigation.v5.utils.LocaleUtils;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
+import okhttp3.EventListener;
+import okhttp3.Interceptor;
 import retrofit2.Call;
 import retrofit2.Callback;
 
@@ -40,6 +45,7 @@ import retrofit2.Callback;
 public final class NavigationRoute {
 
   private final MapboxDirections mapboxDirections;
+  private static final NavigationRouteEventListener EVENT_LISTENER = new NavigationRouteEventListener();
 
   /**
    * Package private constructor used for the {@link Builder#build()} method.
@@ -66,7 +72,8 @@ public final class NavigationRoute {
       .annotations(DirectionsCriteria.ANNOTATION_CONGESTION, DirectionsCriteria.ANNOTATION_DISTANCE)
       .language(context, localeUtils)
       .voiceUnits(context, localeUtils)
-      .profile(DirectionsCriteria.PROFILE_DRIVING_TRAFFIC);
+      .profile(DirectionsCriteria.PROFILE_DRIVING_TRAFFIC)
+      .continueStraight(true);
   }
 
   /**
@@ -76,8 +83,8 @@ public final class NavigationRoute {
    * @param callback a RetroFit callback which contains an onResponse and onFailure
    * @since 0.5.0
    */
-  public void getRoute(Callback<DirectionsResponse> callback) {
-    mapboxDirections.enqueueCall(callback);
+  public void getRoute(final Callback<DirectionsResponse> callback) {
+    mapboxDirections.enqueueCall(new NavigationRouteCallback(EVENT_LISTENER, callback));
   }
 
   /**
@@ -118,12 +125,21 @@ public final class NavigationRoute {
     private static final String SEMICOLON = ";";
     private static final String COMMA = ",";
     private final MapboxDirections.Builder directionsBuilder;
+    private final NavigationRouteEventListener eventListener;
+    private NavigationRouteWaypoint origin;
+    private NavigationRouteWaypoint destination;
+    private List<NavigationRouteWaypoint> waypoints = new ArrayList<>();
 
     /**
      * Private constructor for initializing the raw MapboxDirections.Builder
      */
     private Builder() {
-      directionsBuilder = MapboxDirections.builder();
+      this(MapboxDirections.builder());
+    }
+
+    Builder(MapboxDirections.Builder directionsBuilder) {
+      this.directionsBuilder = directionsBuilder;
+      this.eventListener = EVENT_LISTENER;
     }
 
     /**
@@ -163,7 +179,7 @@ public final class NavigationRoute {
      * @since 0.5.0
      */
     public Builder origin(@NonNull Point origin) {
-      origin(origin, null, null);
+      this.origin = new NavigationRouteWaypoint(origin, null, null);
       return this;
     }
 
@@ -182,8 +198,7 @@ public final class NavigationRoute {
      */
     public Builder origin(@NonNull Point origin, @Nullable Double angle,
                           @Nullable Double tolerance) {
-      directionsBuilder.origin(origin);
-      directionsBuilder.addBearing(angle, tolerance);
+      this.origin = new NavigationRouteWaypoint(origin, angle, tolerance);
       return this;
     }
 
@@ -197,7 +212,7 @@ public final class NavigationRoute {
      * @since 0.50
      */
     public Builder destination(@NonNull Point destination) {
-      destination(destination, null, null);
+      this.destination = new NavigationRouteWaypoint(destination, null, null);
       return this;
     }
 
@@ -216,8 +231,7 @@ public final class NavigationRoute {
      */
     public Builder destination(@NonNull Point destination, @Nullable Double angle,
                                @Nullable Double tolerance) {
-      directionsBuilder.destination(destination);
-      directionsBuilder.addBearing(angle, tolerance);
+      this.destination = new NavigationRouteWaypoint(destination, angle, tolerance);
       return this;
     }
 
@@ -234,16 +248,19 @@ public final class NavigationRoute {
      * @since 0.5.0
      */
     public Builder addWaypoint(@NonNull Point waypoint) {
-      directionsBuilder.addWaypoint(waypoint);
-      directionsBuilder.addBearing(null, null);
+      this.waypoints.add(new NavigationRouteWaypoint(waypoint, null, null));
       return this;
     }
 
     /**
      * This can be used to set up to 23 additional in-between points which will act as pit-stops
-     * along the users route. Note that if you are using the
+     * along the users route.
+     * <p>
+     * Note that if you are using the
      * {@link DirectionsCriteria#PROFILE_DRIVING_TRAFFIC} that the max number of waypoints allowed
      * in the request is currently limited to 1.
+     * <p>
+     * These waypoints are added to the request in the order you add them to the builder with this method.
      *
      * @param waypoint  a {@link Point} which represents the pit-stop or waypoint where you'd like
      *                  one of the {@link com.mapbox.api.directions.v5.models.RouteLeg} to
@@ -257,8 +274,7 @@ public final class NavigationRoute {
      */
     public Builder addWaypoint(@NonNull Point waypoint, @Nullable Double angle,
                                @Nullable Double tolerance) {
-      directionsBuilder.addWaypoint(waypoint);
-      directionsBuilder.addBearing(angle, tolerance);
+      this.waypoints.add(new NavigationRouteWaypoint(waypoint, angle, tolerance));
       return this;
     }
 
@@ -354,7 +370,11 @@ public final class NavigationRoute {
      *                  recommended to be either 45 or 90 degree tolerance
      * @return this builder for chaining options together
      * @since 0.5.0
+     * @deprecated use the bearing paired with {@link Builder#origin(Point, Double, Double)},
+     * {@link Builder#destination(Point, Double, Double)},
+     * or {@link Builder#addWaypoint(Point, Double, Double)} instead.
      */
+    @Deprecated
     public Builder addBearing(@Nullable @FloatRange(from = 0, to = 360) Double angle,
                               @Nullable @FloatRange(from = 0, to = 360) Double tolerance) {
       directionsBuilder.addBearing(angle, tolerance);
@@ -468,6 +488,23 @@ public final class NavigationRoute {
       return this;
     }
 
+
+    /**
+     * Optionally, set which input coordinates should be treated as waypoints / separate legs.
+     * Note: coordinate indices not added here act as silent waypoints
+     * <p>
+     * Most useful in combination with <tt>steps=true</tt> and requests based on traces
+     * with high sample rates. Can be an index corresponding to any of the input coordinates,
+     * but must contain the first ( 0 ) and last coordinates' index separated by <tt>;</tt>.
+     *
+     * @param indices integer array of coordinate indices to be used as waypoints
+     * @return this builder for chaining options together
+     */
+    public Builder addWaypointIndices(@Nullable @IntRange(from = 0) Integer... indices) {
+      directionsBuilder.addWaypointIndices(indices);
+      return this;
+    }
+
     /**
      * Custom names for waypoints used for the arrival instruction,
      * each separated by <tt>;</tt>. Values can be any string and total number of all characters cannot
@@ -500,6 +537,54 @@ public final class NavigationRoute {
      */
     public Builder addWaypointTargets(@Nullable Point... waypointTargets) {
       directionsBuilder.addWaypointTargets(waypointTargets);
+      return this;
+    }
+
+    /**
+     * Adds an optional interceptor to set in the OkHttp client.
+     *
+     * @param interceptor to set for OkHttp
+     * @return this builder for chaining options together
+     */
+    public Builder interceptor(Interceptor interceptor) {
+      directionsBuilder.interceptor(interceptor);
+      return this;
+    }
+
+    /**
+     * Adds an optional event listener to set in the OkHttp client.
+     *
+     * @param eventListener to set for OkHttp
+     * @return this builder for chaining options together
+     */
+    public Builder eventListener(EventListener eventListener) {
+      directionsBuilder.eventListener(eventListener);
+      return this;
+    }
+
+    /**
+     * Enables a route to be refreshable
+     *
+     * @param enableRefresh whether or not to enable refresh
+     * @return this builder for chaining options together
+     */
+    public Builder enableRefresh(boolean enableRefresh) {
+      directionsBuilder.enableRefresh(enableRefresh);
+      return this;
+    }
+
+    /**
+     * Sets allowed direction of travel when departing intermediate waypoints. If true the route
+     * will continue in the same direction of travel. If false the route may continue in the
+     * opposite direction of travel. API defaults to true for
+     * {@link DirectionsCriteria#PROFILE_DRIVING} and false for
+     * {@link DirectionsCriteria#PROFILE_WALKING} and {@link DirectionsCriteria#PROFILE_CYCLING}.
+     *
+     * @param continueStraight boolean true if you want to always continue straight, else false.
+     * @return this builder for chaining options together
+     */
+    public Builder continueStraight(boolean continueStraight) {
+      directionsBuilder.continueStraight(continueStraight);
       return this;
     }
 
@@ -558,6 +643,12 @@ public final class NavigationRoute {
         directionsBuilder.addApproaches(approaches);
       }
 
+      String waypointIndices = options.waypointIndices();
+      if (!TextUtils.isEmpty(waypointIndices)) {
+        Integer[] splitWaypointIndices = parseWaypointIndices(waypointIndices);
+        directionsBuilder.addWaypointIndices(splitWaypointIndices);
+      }
+
       if (!TextUtils.isEmpty(options.waypointNames())) {
         String[] waypointNames = options.waypointNames().split(SEMICOLON);
         directionsBuilder.addWaypointNames(waypointNames);
@@ -565,8 +656,8 @@ public final class NavigationRoute {
 
       String waypointTargets = options.waypointTargets();
       if (!TextUtils.isEmpty(waypointTargets)) {
-        Point[] splittedWaypointTargets = parseWaypointTargets(waypointTargets);
-        directionsBuilder.addWaypointTargets(splittedWaypointTargets);
+        Point[] splitWaypointTargets = parseWaypointTargets(waypointTargets);
+        directionsBuilder.addWaypointTargets(splitWaypointTargets);
       }
 
       return this;
@@ -581,23 +672,37 @@ public final class NavigationRoute {
      */
     public NavigationRoute build() {
       // Set the default values which the user cannot alter.
+      assembleWaypoints();
       directionsBuilder
         .steps(true)
-        .continueStraight(true)
         .geometries(DirectionsCriteria.GEOMETRY_POLYLINE6)
         .overview(DirectionsCriteria.OVERVIEW_FULL)
         .voiceInstructions(true)
         .bannerInstructions(true)
-        .roundaboutExits(true);
+        .roundaboutExits(true)
+        .eventListener(eventListener)
+        .enableRefresh(true);
       return new NavigationRoute(directionsBuilder.build());
     }
 
     @NonNull
-    private Point[] parseWaypointTargets(String waypointTargets) {
-      String[] splittedWaypointTargets = waypointTargets.split(SEMICOLON);
-      Point[] waypoints = new Point[splittedWaypointTargets.length];
+    private Integer[] parseWaypointIndices(String waypointIndices) {
+      String[] splitWaypointIndices = waypointIndices.split(SEMICOLON);
+      Integer[] indices = new Integer[splitWaypointIndices.length];
       int index = 0;
-      for (String waypointTarget : splittedWaypointTargets) {
+      for (String waypointIndex : splitWaypointIndices) {
+        int parsedIndex = Integer.valueOf(waypointIndex);
+        indices[index++] = parsedIndex;
+      }
+      return indices;
+    }
+
+    @NonNull
+    private Point[] parseWaypointTargets(String waypointTargets) {
+      String[] splitWaypointTargets = waypointTargets.split(SEMICOLON);
+      Point[] waypoints = new Point[splitWaypointTargets.length];
+      int index = 0;
+      for (String waypointTarget : splitWaypointTargets) {
         String[] point = waypointTarget.split(COMMA);
         if (waypointTarget.isEmpty()) {
           waypoints[index++] = null;
@@ -608,6 +713,23 @@ public final class NavigationRoute {
         }
       }
       return waypoints;
+    }
+
+    private void assembleWaypoints() {
+      if (origin != null) {
+        directionsBuilder.origin(origin.getWaypoint());
+        directionsBuilder.addBearing(origin.getBearingAngle(), origin.getTolerance());
+      }
+
+      for (NavigationRouteWaypoint waypoint : waypoints) {
+        directionsBuilder.addWaypoint(waypoint.getWaypoint());
+        directionsBuilder.addBearing(waypoint.getBearingAngle(), waypoint.getTolerance());
+      }
+
+      if (destination != null) {
+        directionsBuilder.destination(destination.getWaypoint());
+        directionsBuilder.addBearing(destination.getBearingAngle(), destination.getTolerance());
+      }
     }
   }
 }

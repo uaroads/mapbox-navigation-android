@@ -16,13 +16,16 @@ import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.location.LocationComponent;
+import com.mapbox.mapboxsdk.location.LocationComponentActivationOptions;
 import com.mapbox.mapboxsdk.location.LocationComponentOptions;
 import com.mapbox.mapboxsdk.location.OnCameraTrackingChangedListener;
 import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
+import com.mapbox.mapboxsdk.maps.Style;
 import com.mapbox.mapboxsdk.plugins.annotation.SymbolManager;
+import com.mapbox.mapboxsdk.plugins.annotation.SymbolOptions;
 import com.mapbox.mapboxsdk.style.sources.Source;
 import com.mapbox.mapboxsdk.style.sources.VectorSource;
 import com.mapbox.services.android.navigation.ui.v5.NavigationSnapshotReadyCallback;
@@ -76,6 +79,7 @@ public class NavigationMapboxMap {
   private MapWayName mapWayName;
   @Nullable
   private MapFpsDelegate mapFpsDelegate;
+  private LocationFpsDelegate locationFpsDelegate;
 
   /**
    * Constructor that can be used once {@link com.mapbox.mapboxsdk.maps.OnMapReadyCallback}
@@ -92,7 +96,8 @@ public class NavigationMapboxMap {
     initializeNavigationSymbolManager(mapView, mapboxMap);
     initializeMapLayerInteractor(mapboxMap);
     initializeRoute(mapView, mapboxMap);
-    initializeCamera(mapboxMap);
+    initializeCamera(mapboxMap, locationComponent);
+    initializeLocationFpsDelegate(mapboxMap, locationComponent);
   }
 
   // Package private (no modifier) for testing purposes
@@ -111,6 +116,11 @@ public class NavigationMapboxMap {
   }
 
   // Package private (no modifier) for testing purposes
+  NavigationMapboxMap(NavigationSymbolManager navigationSymbolManager) {
+    this.navigationSymbolManager = navigationSymbolManager;
+  }
+
+  // Package private (no modifier) for testing purposes
   NavigationMapboxMap(@NonNull MapWayName mapWayName, @NonNull MapFpsDelegate mapFpsDelegate) {
     this.mapWayName = mapWayName;
     this.mapFpsDelegate = mapFpsDelegate;
@@ -118,11 +128,13 @@ public class NavigationMapboxMap {
 
   // Package private (no modifier) for testing purposes
   NavigationMapboxMap(@NonNull MapWayName mapWayName, @NonNull MapFpsDelegate mapFpsDelegate,
-                      NavigationMapRoute mapRoute, NavigationCamera mapCamera) {
+                      NavigationMapRoute mapRoute, NavigationCamera mapCamera,
+                      LocationFpsDelegate locationFpsDelegate) {
     this.mapWayName = mapWayName;
     this.mapFpsDelegate = mapFpsDelegate;
     this.mapRoute = mapRoute;
     this.mapCamera = mapCamera;
+    this.locationFpsDelegate = locationFpsDelegate;
   }
 
   // Package private (no modifier) for testing purposes
@@ -139,9 +151,36 @@ public class NavigationMapboxMap {
    *
    * @param context  to retrieve the icon drawable from the theme
    * @param position the point at which the marker will be placed
+   * @deprecated Use {@link NavigationMapboxMap#addDestinationMarker(Point)} instead.
+   * A {@link Context} is no longer needed.
    */
+  @Deprecated
   public void addMarker(Context context, Point position) {
-    navigationSymbolManager.addMarkerFor(position);
+    navigationSymbolManager.addDestinationMarkerFor(position);
+  }
+
+  /**
+   * Adds a marker icon on the map at the given position.
+   * <p>
+   * The icon used for this method can be defined in your theme with
+   * the attribute <tt>navigationViewDestinationMarker</tt>.
+   *
+   * @param position the point at which the marker will be placed
+   */
+  public void addDestinationMarker(Point position) {
+    navigationSymbolManager.addDestinationMarkerFor(position);
+  }
+
+  /**
+   * Adds a custom marker to the map based on the options provided.
+   * <p>
+   * Please note, the map will manage all markers added.  Calling {@link NavigationMapboxMap#clearMarkers()}
+   * will clear all destination / custom markers that have been added to the map.
+   *
+   * @param options for the custom {@link com.mapbox.mapboxsdk.plugins.annotation.Symbol}
+   */
+  public void addCustomMarker(SymbolOptions options) {
+    navigationSymbolManager.addCustomSymbolFor(options);
   }
 
   /**
@@ -202,6 +241,16 @@ public class NavigationMapboxMap {
   }
 
   /**
+   * Enabled by default, the navigation map will throttle frames per second of the location icon
+   * based on the map zoom level.
+   *
+   * @param isEnabled true to enable (default), false to render at device ability
+   */
+  public void updateLocationFpsThrottleEnabled(boolean isEnabled) {
+    locationFpsDelegate.updateEnabled(isEnabled);
+  }
+
+  /**
    * Updates how the user location is shown on the map.
    * <p>
    * <ul>
@@ -247,6 +296,7 @@ public class NavigationMapboxMap {
     settings.updateCurrentPadding(mapPaddingAdjustor.retrieveCurrentPadding());
     settings.updateShouldUseDefaultPadding(mapPaddingAdjustor.isUsingDefault());
     settings.updateCameraTrackingMode(mapCamera.getCameraTrackingMode());
+    settings.updateLocationFpsEnabled(locationFpsDelegate.isEnabled());
     NavigationMapboxMapInstanceState instanceState = new NavigationMapboxMapInstanceState(settings);
     outState.putParcelable(key, instanceState);
   }
@@ -417,6 +467,7 @@ public class NavigationMapboxMap {
     mapRoute.onStart();
     handleWayNameOnStart();
     handleFpsOnStart();
+    locationFpsDelegate.onStart();
   }
 
   /**
@@ -428,6 +479,7 @@ public class NavigationMapboxMap {
     mapRoute.onStop();
     handleWayNameOnStop();
     handleFpsOnStop();
+    locationFpsDelegate.onStop();
   }
 
   /**
@@ -554,9 +606,14 @@ public class NavigationMapboxMap {
     map.setMinZoomPreference(NAVIGATION_MINIMUM_MAP_ZOOM);
     map.setMaxZoomPreference(NAVIGATION_MAXIMUM_MAP_ZOOM);
     Context context = mapView.getContext();
+    Style style = map.getStyle();
     int locationLayerStyleRes = findLayerStyleRes(context);
     LocationComponentOptions options = LocationComponentOptions.createFromAttributes(context, locationLayerStyleRes);
-    locationComponent.activateLocationComponent(context, map.getStyle(), null, options);
+    LocationComponentActivationOptions activationOptions = LocationComponentActivationOptions.builder(context, style)
+      .locationComponentOptions(options)
+      .useDefaultLocationEngine(false)
+      .build();
+    locationComponent.activateLocationComponent(activationOptions);
     locationComponent.setLocationComponentEnabled(true);
   }
 
@@ -582,6 +639,8 @@ public class NavigationMapboxMap {
     mapboxMap.getStyle().addImage(MAPBOX_NAVIGATION_MARKER_NAME, markerBitmap);
     SymbolManager symbolManager = new SymbolManager(mapView, mapboxMap, mapboxMap.getStyle());
     navigationSymbolManager = new NavigationSymbolManager(symbolManager);
+    SymbolOnStyleLoadedListener onStyleLoadedListener = new SymbolOnStyleLoadedListener(mapboxMap, markerBitmap);
+    mapView.addOnDidFinishLoadingStyleListener(onStyleLoadedListener);
   }
 
   private void initializeMapLayerInteractor(MapboxMap mapboxMap) {
@@ -594,8 +653,12 @@ public class NavigationMapboxMap {
     mapRoute = new NavigationMapRoute(null, mapView, map, routeStyleRes);
   }
 
-  private void initializeCamera(MapboxMap map) {
+  private void initializeCamera(MapboxMap map, LocationComponent locationComponent) {
     mapCamera = new NavigationCamera(map, locationComponent);
+  }
+
+  private void initializeLocationFpsDelegate(MapboxMap map, LocationComponent locationComponent) {
+    locationFpsDelegate = new LocationFpsDelegate(map, locationComponent);
   }
 
   private void initializeWayName(MapboxMap mapboxMap, MapPaddingAdjustor paddingAdjustor) {
@@ -671,6 +734,7 @@ public class NavigationMapboxMap {
 
   private void restoreMapWith(NavigationMapSettings settings) {
     updateCameraTrackingMode(settings.retrieveCameraTrackingMode());
+    updateLocationFpsThrottleEnabled(settings.isLocationFpsEnabled());
     if (settings.shouldUseDefaultPadding()) {
       mapPaddingAdjustor.updatePaddingWithDefault();
     } else {

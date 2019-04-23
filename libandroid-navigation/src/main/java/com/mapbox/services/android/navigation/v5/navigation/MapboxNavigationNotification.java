@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
+import android.support.v4.content.ContextCompat;
 import android.text.SpannableString;
 import android.text.format.DateFormat;
 import android.widget.RemoteViews;
@@ -37,6 +38,7 @@ import static com.mapbox.services.android.navigation.v5.utils.time.TimeFormatter
 class MapboxNavigationNotification implements NavigationNotification {
 
   private static final String END_NAVIGATION_ACTION = "com.mapbox.intent.action.END_NAVIGATION";
+  private static final String SET_BACKGROUND_COLOR = "setBackgroundColor";
   private NotificationManager notificationManager;
   private Notification notification;
   private RemoteViews collapsedNotificationRemoteViews;
@@ -64,6 +66,14 @@ class MapboxNavigationNotification implements NavigationNotification {
     initialize(applicationContext, mapboxNavigation);
   }
 
+  // For testing only
+  MapboxNavigationNotification(Context applicationContext, MapboxNavigation mapboxNavigation,
+                               Notification notification) {
+    this.applicationContext = applicationContext;
+    this.notification = notification;
+    initialize(applicationContext, mapboxNavigation);
+  }
+
   @Override
   public Notification getNotification() {
     return notification;
@@ -77,11 +87,22 @@ class MapboxNavigationNotification implements NavigationNotification {
   @Override
   public void updateNotification(RouteProgress routeProgress) {
     updateNotificationViews(routeProgress);
+    rebuildNotification();
   }
 
   @Override
   public void onNavigationStopped(Context applicationContext) {
     unregisterReceiver(applicationContext);
+  }
+
+  // Package private (no modifier) for testing purposes
+  String generateArrivalTime(RouteProgress routeProgress, Calendar time) {
+    MapboxNavigationOptions options = mapboxNavigation.options();
+    double legDurationRemaining = routeProgress.currentLegProgress().durationRemaining();
+    int timeFormatType = options.timeFormatType();
+    String arrivalTime = formatTime(time, legDurationRemaining, timeFormatType, isTwentyFourHourFormat);
+    String formattedArrivalTime = String.format(etaFormat, arrivalTime);
+    return formattedArrivalTime;
   }
 
   private void initialize(Context applicationContext, MapboxNavigation mapboxNavigation) {
@@ -96,7 +117,9 @@ class MapboxNavigationNotification implements NavigationNotification {
 
     registerReceiver(applicationContext);
     createNotificationChannel(applicationContext);
-    notification = buildNotification(applicationContext);
+    if (notification == null) {
+      notification = buildNotification(applicationContext);
+    }
   }
 
   private void initializeDistanceFormatter(Context applicationContext, MapboxNavigation mapboxNavigation) {
@@ -139,11 +162,19 @@ class MapboxNavigationNotification implements NavigationNotification {
   }
 
   private void buildRemoteViews() {
-    collapsedNotificationRemoteViews = new RemoteViews(applicationContext.getPackageName(),
-      R.layout.collapsed_navigation_notification_layout);
-    expandedNotificationRemoteViews = new RemoteViews(applicationContext.getPackageName(),
-      R.layout.expanded_navigation_notification_layout);
+    int colorResId = mapboxNavigation.options().defaultNotificationColorId();
+    int backgroundColor = ContextCompat.getColor(applicationContext, colorResId);
+
+    int collapsedLayout = R.layout.collapsed_navigation_notification_layout;
+    int collapsedLayoutId = R.id.navigationCollapsedNotificationLayout;
+    collapsedNotificationRemoteViews = new RemoteViews(applicationContext.getPackageName(), collapsedLayout);
+    collapsedNotificationRemoteViews.setInt(collapsedLayoutId, SET_BACKGROUND_COLOR, backgroundColor);
+
+    int expandedLayout = R.layout.expanded_navigation_notification_layout;
+    int expandedLayoutId = R.id.navigationExpandedNotificationLayout;
+    expandedNotificationRemoteViews = new RemoteViews(applicationContext.getPackageName(), expandedLayout);
     expandedNotificationRemoteViews.setOnClickPendingIntent(R.id.endNavigationBtn, pendingCloseIntent);
+    expandedNotificationRemoteViews.setInt(expandedLayoutId, SET_BACKGROUND_COLOR, backgroundColor);
   }
 
   @Nullable
@@ -172,12 +203,16 @@ class MapboxNavigationNotification implements NavigationNotification {
     buildRemoteViews();
     updateInstructionText(routeProgress.currentLegProgress().currentStep());
     updateDistanceText(routeProgress);
-    updateArrivalTime(routeProgress);
+    Calendar time = Calendar.getInstance();
+    String formattedArrivalTime = generateArrivalTime(routeProgress, time);
+    updateViewsWith(formattedArrivalTime);
     LegStep step = routeProgress.currentLegProgress().upComingStep() != null
       ? routeProgress.currentLegProgress().upComingStep()
       : routeProgress.currentLegProgress().currentStep();
     updateManeuverImage(step);
+  }
 
+  private void rebuildNotification() {
     notification = buildNotification(applicationContext);
     notificationManager.notify(NAVIGATION_NOTIFICATION_ID, notification);
   }
@@ -222,13 +257,7 @@ class MapboxNavigationNotification implements NavigationNotification {
       routeProgress.currentLegProgress().currentStepProgress().distanceRemaining()).toString());
   }
 
-  private void updateArrivalTime(RouteProgress routeProgress) {
-    MapboxNavigationOptions options = mapboxNavigation.options();
-    Calendar time = Calendar.getInstance();
-    double durationRemaining = routeProgress.durationRemaining();
-    int timeFormatType = options.timeFormatType();
-    String arrivalTime = formatTime(time, durationRemaining, timeFormatType, isTwentyFourHourFormat);
-    String formattedArrivalTime = String.format(etaFormat, arrivalTime);
+  private void updateViewsWith(String formattedArrivalTime) {
     collapsedNotificationRemoteViews.setTextViewText(R.id.notificationArrivalText, formattedArrivalTime);
     expandedNotificationRemoteViews.setTextViewText(R.id.notificationArrivalText, formattedArrivalTime);
   }

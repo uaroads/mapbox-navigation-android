@@ -1,10 +1,11 @@
 package com.mapbox.services.android.navigation.testapp
 
-import android.app.Application
 import android.os.StrictMode
+import android.support.multidex.MultiDexApplication
 import android.text.TextUtils
 import com.mapbox.android.search.MapboxSearch
 import com.mapbox.android.search.MapboxSearchOptions
+import com.mapbox.crashmonitor.CrashMonitor
 import com.mapbox.mapboxsdk.Mapbox
 import com.mapbox.services.android.navigation.testapp.example.utils.DelegatesExt
 import com.squareup.leakcanary.LeakCanary
@@ -12,7 +13,7 @@ import timber.log.Timber
 
 private const val DEFAULT_MAPBOX_ACCESS_TOKEN = "pk.eyJ1IjoidWFyb2Fkcy10ZWFtIiwiYSI6ImNqcGR3c2R4ZTNiZ2UzcXBoN3VuYXE3NWYifQ.vvS4U7JNX3ewX4pqZe6lxQ"
 
-class NavigationApplication : Application() {
+class NavigationApplication : MultiDexApplication() {
 
   companion object {
     var instance: NavigationApplication by DelegatesExt.notNullSingleValue()
@@ -25,6 +26,7 @@ class NavigationApplication : Application() {
     setupStrictMode()
     setupCanary()
     setupMapbox()
+    setupCrashMonitor()
   }
 
   private fun setupTimber() {
@@ -61,8 +63,19 @@ class NavigationApplication : Application() {
       Timber.w("Mapbox access token isn't set!")
     }
 
-    val cachingMode = MapboxSearchOptions().setCachingMode(MapboxSearchOptions.CACHE_EXTERNAL)
+    val cachingMode = MapboxSearchOptions().setCachingEnabled(true)
     MapboxSearch.getInstance(applicationContext, mapboxAccessToken, cachingMode)
     Mapbox.getInstance(applicationContext, mapboxAccessToken)
+  }
+
+  private fun setupCrashMonitor() {
+    val crashMonitor = CrashMonitor { crashDetails ->
+      throw Exception(crashDetails)
+    }
+    try {
+      crashMonitor.monitor(applicationInfo.dataDir)
+    } catch (e: Exception) {
+      Timber.e("Couldn't monitor for crashes: ${e.message}")
+    }
   }
 }

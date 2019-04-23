@@ -11,7 +11,6 @@ import com.mapbox.services.android.navigation.v5.BaseTest;
 import com.mapbox.services.android.navigation.v5.utils.LocaleUtils;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -20,6 +19,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import okhttp3.EventListener;
+import okhttp3.Interceptor;
 import retrofit2.Call;
 
 import static junit.framework.Assert.assertNotNull;
@@ -82,6 +83,21 @@ public class NavigationRouteTest extends BaseTest {
   }
 
   @Test
+  public void checksWaypointIndicesIncludedInRequest() {
+    NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
+      .accessToken(ACCESS_TOKEN)
+      .origin(Point.fromLngLat(1.0, 2.0))
+      .addWaypoint(Point.fromLngLat(1.0, 3.0))
+      .addWaypoint(Point.fromLngLat(1.0, 3.0))
+      .destination(Point.fromLngLat(1.0, 5.0))
+      .addWaypointIndices(0, 2, 3)
+      .build();
+
+    assertThat(navigationRoute.getCall().request().url().toString(),
+      containsString("waypoints"));
+  }
+
+  @Test
   public void addWaypointNamesIncludedInRequest() {
     NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
       .accessToken(ACCESS_TOKEN)
@@ -109,35 +125,38 @@ public class NavigationRouteTest extends BaseTest {
   }
 
   @Test
-  public void addingPointAndBearingKeepsCorrectOrder() throws Exception {
-    NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
-      .accessToken(ACCESS_TOKEN)
-      .origin(Point.fromLngLat(1.0, 2.0), 90d, 90d)
-      .addBearing(2.0, 3.0)
-      .destination(Point.fromLngLat(1.0, 5.0))
-      .build();
-
-    String requestUrl = navigationRoute.getCall().request().url().toString();
-    assertThat(requestUrl, containsString("bearings=90%2C90%3B2%2C3%3B"));
-  }
-
-  @Test
-  @Ignore
-  public void reverseOriginDestinationDoesntMessUpBearings() throws Exception {
+  public void reverseOriginDestination_bearingsAreFormattedCorrectly() {
     NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
       .accessToken(ACCESS_TOKEN)
       .destination(Point.fromLngLat(1.0, 5.0), 1d, 5d)
       .origin(Point.fromLngLat(1.0, 2.0), 90d, 90d)
       .build();
 
-    assertThat(navigationRoute.getCall().request().url().toString(),
-      containsString("bearings=90,90;1,5"));
+    String requestUrl = navigationRoute.getCall().request().url().toString();
+
+    assertThat(requestUrl, containsString("bearings=90%2C90%3B1%2C5"));
   }
 
   @Test
-  public void addRouteOptionsIncludedInRequest() throws Exception {
+  public void addWaypointsThenOriginDestination_bearingsAreFormattedCorrectly() {
+    NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
+      .accessToken(ACCESS_TOKEN)
+      .addWaypoint(Point.fromLngLat(3.0, 4.0), 20d, 20d)
+      .addWaypoint(Point.fromLngLat(5.0, 6.0), 30d, 30d)
+      .destination(Point.fromLngLat(7.0, 8.0), 40d, 40d)
+      .origin(Point.fromLngLat(1.0, 2.0), 10d, 10d)
+      .build();
+
+    String requestUrl = navigationRoute.getCall().request().url().toString();
+
+    assertThat(requestUrl, containsString("bearings=10%2C10%3B20%2C20%3B30%2C30%3B40%2C40"));
+  }
+
+  @Test
+  public void addRouteOptionsIncludedInRequest() {
     List<Point> coordinates = new ArrayList<>();
     coordinates.add(Point.fromLngLat(1.0, 2.0));
+    coordinates.add(Point.fromLngLat(1.0, 3.0));
     coordinates.add(Point.fromLngLat(1.0, 5.0));
 
     RouteOptions routeOptions = RouteOptions.builder()
@@ -151,14 +170,16 @@ public class NavigationRouteTest extends BaseTest {
       .voiceUnits(DirectionsCriteria.METRIC)
       .user("example_user")
       .geometries("mocked_geometries")
-      .approaches("curb;unrestricted")
-      .waypointNames("Origin;Destination")
-      .waypointTargets(";0.99,4.99")
+      .approaches("curb;;unrestricted")
+      .waypointNames("Origin;Pickup;Destination")
+      .waypointTargets(";;0.99,4.99")
+      .waypointIndices("0;2")
       .build();
 
     NavigationRoute navigationRoute = NavigationRoute.builder(context, localeUtils)
       .origin(coordinates.get(0))
-      .destination(coordinates.get(1))
+      .addWaypoint(coordinates.get(1))
+      .destination(coordinates.get(2))
       .routeOptions(routeOptions)
       .build();
 
@@ -199,5 +220,38 @@ public class NavigationRouteTest extends BaseTest {
     navigationRoute.cancelCall();
 
     verify(routeCall, times(0)).cancel();
+  }
+
+  @Test
+  public void builderInterceptor_setsMapboxDirections() {
+    MapboxDirections.Builder mapboxDirectionsBuilder = mock(MapboxDirections.Builder.class);
+    NavigationRoute.Builder builder = new NavigationRoute.Builder(mapboxDirectionsBuilder);
+    EventListener eventListener = mock(EventListener.class);
+
+    builder.eventListener(eventListener);
+
+    verify(mapboxDirectionsBuilder).eventListener(eventListener);
+  }
+
+  @Test
+  public void builderEventListener_setsMapboxDirections() {
+    MapboxDirections.Builder mapboxDirectionsBuilder = mock(MapboxDirections.Builder.class);
+    NavigationRoute.Builder builder = new NavigationRoute.Builder(mapboxDirectionsBuilder);
+    Interceptor interceptor = mock(Interceptor.class);
+
+    builder.interceptor(interceptor);
+
+    verify(mapboxDirectionsBuilder).interceptor(interceptor);
+  }
+
+  @Test
+  public void builderContinueStraight_setsMapboxDirections() {
+    MapboxDirections.Builder mapboxDirectionsBuilder = mock(MapboxDirections.Builder.class);
+    NavigationRoute.Builder builder = new NavigationRoute.Builder(mapboxDirectionsBuilder);
+    boolean continueStraight = false;
+
+    builder.continueStraight(continueStraight);
+
+    verify(mapboxDirectionsBuilder).continueStraight(continueStraight);
   }
 }

@@ -14,6 +14,7 @@ import com.mapbox.android.core.location.LocationEngineProvider;
 import com.mapbox.android.core.location.LocationEngineRequest;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.navigator.Navigator;
+import com.mapbox.services.android.navigation.v5.location.RawLocationListener;
 import com.mapbox.services.android.navigation.v5.milestone.BannerInstructionMilestone;
 import com.mapbox.services.android.navigation.v5.milestone.Milestone;
 import com.mapbox.services.android.navigation.v5.milestone.MilestoneEventListener;
@@ -38,7 +39,8 @@ import retrofit2.Callback;
 import timber.log.Timber;
 
 import static com.mapbox.services.android.navigation.v5.navigation.NavigationConstants.BANNER_INSTRUCTION_MILESTONE_ID;
-import static com.mapbox.services.android.navigation.v5.navigation.NavigationConstants.NON_NULL_APPLICATION_CONTEXT_REQUIRED;
+import static com.mapbox.services.android.navigation.v5.navigation.NavigationConstants
+  .NON_NULL_APPLICATION_CONTEXT_REQUIRED;
 import static com.mapbox.services.android.navigation.v5.navigation.NavigationConstants.VOICE_INSTRUCTION_MILESTONE_ID;
 
 /**
@@ -66,6 +68,7 @@ public class MapboxNavigation implements ServiceConnection {
   private final String accessToken;
   private Context applicationContext;
   private boolean isBound;
+  private RouteRefresher routeRefresher;
 
   static {
     NavigationLibraryLoader.load();
@@ -174,6 +177,8 @@ public class MapboxNavigation implements ServiceConnection {
     removeProgressChangeListener(null);
     removeMilestoneEventListener(null);
     removeNavigationEventListener(null);
+    removeFasterRouteListener(null);
+    removeRawLocationListener(null);
   }
 
   // Public APIs
@@ -276,7 +281,7 @@ public class MapboxNavigation implements ServiceConnection {
   public void setLocationEngine(@NonNull LocationEngine locationEngine) {
     this.locationEngine = locationEngine;
     // Setup telemetry with new engine
-    navigationTelemetry.updateLocationEngineName(locationEngine);
+    navigationTelemetry.updateLocationEngineNameAndSimulation(locationEngine);
     // Notify service to get new location engine.
     if (isServiceAvailable()) {
       navigationService.updateLocationEngine(locationEngine);
@@ -320,7 +325,7 @@ public class MapboxNavigation implements ServiceConnection {
   }
 
   /**
-   * Calling This begins a new navigation session using the provided directions route. this API is
+   * Calling this method begins a new navigation session using the provided directions route. This API is
    * also intended to be used when a reroute occurs passing in the updated directions route.
    * <p>
    * On initial start of the navigation session, the navigation services gets created and bound to
@@ -338,7 +343,21 @@ public class MapboxNavigation implements ServiceConnection {
    * @since 0.1.0
    */
   public void startNavigation(@NonNull DirectionsRoute directionsRoute) {
-    startNavigationWith(directionsRoute);
+    startNavigationWith(directionsRoute, DirectionsRouteType.NEW_ROUTE);
+  }
+
+  /**
+   * Calling this method with {@link DirectionsRouteType#NEW_ROUTE} begins a new navigation session using the
+   * provided directions route.  If called with {@link DirectionsRouteType#FRESH_ROUTE}, only leg annotation data
+   * will be update - can be used with {@link RouteRefresh}.
+   *
+   * @param directionsRoute a {@link DirectionsRoute} that makes up the path your user should
+   *                        traverse along
+   * @param routeType       either new or fresh to determine what data navigation should consider
+   * @see MapboxNavigation#startNavigation(DirectionsRoute)
+   */
+  public void startNavigation(@NonNull DirectionsRoute directionsRoute, @NonNull DirectionsRouteType routeType) {
+    startNavigationWith(directionsRoute, routeType);
   }
 
   /**
@@ -356,6 +375,7 @@ public class MapboxNavigation implements ServiceConnection {
   public void stopNavigation() {
     Timber.d("MapboxNavigation stopNavigation called");
     if (isServiceAvailable()) {
+      navigationTelemetry.stopSession();
       applicationContext.unbindService(this);
       isBound = false;
       navigationService.endNavigation();
@@ -550,6 +570,33 @@ public class MapboxNavigation implements ServiceConnection {
   @SuppressWarnings("WeakerAccess") // Public exposed for usage outside SDK
   public void removeFasterRouteListener(@Nullable FasterRouteListener fasterRouteListener) {
     navigationEventDispatcher.removeFasterRouteListener(fasterRouteListener);
+  }
+
+  /**
+   * This adds a new raw location listener which is invoked when a new {@link android.location.Location}
+   * has been pushed by the {@link LocationEngine}.
+   * <p>
+   * It is not possible to add the same listener implementation more then once and a warning will be
+   * printed in the log if attempted.
+   *
+   * @param rawLocationListener an implementation of {@code RawLocationListener}
+   */
+  public void addRawLocationListener(@NonNull RawLocationListener rawLocationListener) {
+    navigationEventDispatcher.addRawLocationListener(rawLocationListener);
+  }
+
+  /**
+   * This removes a specific raw location listener by passing in the instance of it or you can pass in
+   * null to remove all the listeners. When {@link #onDestroy()} is called, all listeners
+   * get removed automatically, removing the requirement for developers to manually handle this.
+   * <p>
+   * If the listener you are trying to remove does not exist in the list, a warning will be printed
+   * in the log.
+   *
+   * @param rawLocationListener an implementation of {@code RawLocationListener}
+   */
+  public void removeRawLocationListener(@Nullable RawLocationListener rawLocationListener) {
+    navigationEventDispatcher.removeRawLocationListener(rawLocationListener);
   }
 
   // Custom engines
@@ -747,6 +794,10 @@ public class MapboxNavigation implements ServiceConnection {
     mapboxNavigator.toggleHistory(isEnabled);
   }
 
+  public void addHistoryEvent(String eventType, String eventJsonProperties) {
+    mapboxNavigator.addHistoryEvent(eventType, eventJsonProperties);
+  }
+
   public String retrieveSsmlAnnouncementInstruction(int index) {
     return mapboxNavigator.retrieveVoiceInstruction(index).getSsmlAnnouncement();
   }
@@ -800,6 +851,11 @@ public class MapboxNavigation implements ServiceConnection {
     return locationEngineRequest;
   }
 
+  @Nullable
+  RouteRefresher retrieveRouteRefresher() {
+    return routeRefresher;
+  }
+
   private void initializeForTest() {
     // Initialize event dispatcher and add internal listeners
     navigationEventDispatcher = new NavigationEventDispatcher();
@@ -847,7 +903,7 @@ public class MapboxNavigation implements ServiceConnection {
 
   private void initializeTelemetry() {
     navigationTelemetry = obtainTelemetry();
-    navigationTelemetry.initialize(applicationContext, accessToken, this, locationEngine);
+    navigationTelemetry.initialize(applicationContext, accessToken, this);
   }
 
   private NavigationTelemetry obtainTelemetry() {
@@ -878,12 +934,13 @@ public class MapboxNavigation implements ServiceConnection {
     return locationEngineRequest;
   }
 
-  private void startNavigationWith(@NonNull DirectionsRoute directionsRoute) {
+  private void startNavigationWith(@NonNull DirectionsRoute directionsRoute, DirectionsRouteType routeType) {
     ValidationUtils.validDirectionsRoute(directionsRoute, options.defaultMilestonesEnabled());
     this.directionsRoute = directionsRoute;
-    mapboxNavigator.updateRoute(directionsRoute.toJson());
+    routeRefresher = new RouteRefresher(this, new RouteRefresh(accessToken));
+    mapboxNavigator.updateRoute(directionsRoute, routeType);
     if (!isBound) {
-      navigationTelemetry.startSession(directionsRoute);
+      navigationTelemetry.startSession(directionsRoute, locationEngine);
       startNavigationService();
       navigationEventDispatcher.onNavigationEvent(true);
     } else {

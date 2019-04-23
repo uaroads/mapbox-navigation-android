@@ -26,6 +26,7 @@ import com.mapbox.api.directions.v5.DirectionsCriteria;
 import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.core.constants.Constants;
+import com.mapbox.core.utils.TextUtils;
 import com.mapbox.geojson.LineString;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
@@ -51,6 +52,7 @@ import com.mapbox.services.android.navigation.ui.v5.route.OnRouteSelectionChange
 import com.mapbox.services.android.navigation.v5.navigation.NavigationRoute;
 import com.mapbox.services.android.navigation.v5.utils.LocaleUtils;
 
+import java.io.File;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +64,8 @@ import butterknife.OnClick;
 import retrofit2.Call;
 import retrofit2.Response;
 import timber.log.Timber;
+
+import static android.os.Environment.getExternalStoragePublicDirectory;
 
 public class NavigationLauncherActivity extends AppCompatActivity implements OnMapReadyCallback,
   MapboxMap.OnMapLongClickListener, OnRouteSelectionChangeListener {
@@ -207,7 +211,7 @@ public class NavigationLauncherActivity extends AppCompatActivity implements OnM
     if (currentLocation != null) {
       fetchRoute();
     }
-    return true;
+    return false;
   }
 
   @Override
@@ -258,6 +262,7 @@ public class NavigationLauncherActivity extends AppCompatActivity implements OnM
       .accessToken(Mapbox.getAccessToken())
       .origin(currentLocation)
       .destination(destination)
+      .profile(getRouteProfileFromSharedPreferences())
       .alternatives(true);
     setFieldsFromSharedPreferences(builder);
     builder.build()
@@ -320,6 +325,16 @@ public class NavigationLauncherActivity extends AppCompatActivity implements OnM
     );
   }
 
+  private String obtainOfflinePath() {
+    File offline = getExternalStoragePublicDirectory("Offline");
+    return offline.getAbsolutePath();
+  }
+
+  private String retrieveOfflineVersionFromPreferences() {
+    SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+    return sharedPreferences.getString(getString(R.string.offline_version_key), "");
+  }
+
   private void launchNavigationWithRoute() {
     if (route == null) {
       Snackbar.make(mapView, R.string.error_route_not_available, Snackbar.LENGTH_SHORT).show();
@@ -327,14 +342,21 @@ public class NavigationLauncherActivity extends AppCompatActivity implements OnM
     }
 
     NavigationLauncherOptions.Builder optionsBuilder = NavigationLauncherOptions.builder()
-      .shouldSimulateRoute(getShouldSimulateRouteFromSharedPreferences())
-      .directionsProfile(getRouteProfileFromSharedPreferences());
+      .shouldSimulateRoute(getShouldSimulateRouteFromSharedPreferences());
     CameraPosition initialPosition = new CameraPosition.Builder()
       .target(new LatLng(currentLocation.latitude(), currentLocation.longitude()))
       .zoom(INITIAL_ZOOM)
       .build();
     optionsBuilder.initialMapCameraPosition(initialPosition);
     optionsBuilder.directionsRoute(route);
+    String offlinePath = obtainOfflinePath();
+    if (!TextUtils.isEmpty(offlinePath)) {
+      optionsBuilder.offlineRoutingTilesPath(offlinePath);
+    }
+    String offlineVersion = retrieveOfflineVersionFromPreferences();
+    if (!offlineVersion.isEmpty()) {
+      optionsBuilder.offlineRoutingTilesVersion(offlineVersion);
+    }
     NavigationLauncher.startNavigation(this, optionsBuilder.build());
   }
 

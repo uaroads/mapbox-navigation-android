@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.constraint.ConstraintLayout;
 import android.support.design.widget.BaseTransientBottomBar;
 import android.support.design.widget.FloatingActionButton;
@@ -26,9 +27,11 @@ import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
 import com.mapbox.mapboxsdk.camera.CameraPosition;
+import com.mapbox.mapboxsdk.camera.CameraUpdate;
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.geometry.LatLngBounds;
+import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
@@ -37,6 +40,7 @@ import com.mapbox.services.android.navigation.testapp.R;
 import com.mapbox.services.android.navigation.testapp.activity.HistoryActivity;
 import com.mapbox.services.android.navigation.ui.v5.camera.DynamicCamera;
 import com.mapbox.services.android.navigation.ui.v5.camera.NavigationCamera;
+import com.mapbox.services.android.navigation.ui.v5.camera.NavigationCameraUpdate;
 import com.mapbox.services.android.navigation.ui.v5.instruction.InstructionView;
 import com.mapbox.services.android.navigation.ui.v5.map.NavigationMapboxMap;
 import com.mapbox.services.android.navigation.ui.v5.voice.NavigationSpeechPlayer;
@@ -54,6 +58,7 @@ import com.mapbox.services.android.navigation.v5.routeprogress.RouteProgress;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -140,6 +145,7 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
       // For navigation logic / processing
       initializeNavigation(mapboxMap);
       navigationMap.updateCameraTrackingMode(NavigationCamera.NAVIGATION_TRACKING_MODE_NONE);
+      navigationMap.updateLocationLayerRenderMode(RenderMode.GPS);
 
       // For voice instructions
       initializeSpeechPlayer();
@@ -150,7 +156,7 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
   public boolean onMapLongClick(@NonNull LatLng point) {
     // Only reverse geocode while we are not in navigation
     if (mapState.equals(MapState.NAVIGATION)) {
-      return true;
+      return false;
     }
 
     // Fetch the route with this given point
@@ -164,12 +170,11 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
     // Update camera to new destination
     moveCameraToInclude(destination);
     vibrate();
-    return true;
+    return false;
   }
 
   @OnClick(R.id.startNavigationFab)
   public void onStartNavigationClick(FloatingActionButton floatingActionButton) {
-    navigationMap.updateCameraTrackingMode(NavigationCamera.NAVIGATION_TRACKING_MODE_GPS);
     // Transition to navigation state
     mapState = MapState.NAVIGATION;
 
@@ -183,9 +188,18 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
     // Start navigation
     adjustMapPaddingForNavigation();
     navigation.startNavigation(route);
+    addEventToHistoryFile("start_navigation");
 
     // Location updates will be received from ProgressChangeListener
     removeLocationEngineListener();
+
+    // TODO remove example usage
+    navigationMap.resetCameraPositionWith(NavigationCamera.NAVIGATION_TRACKING_MODE_GPS);
+    CameraUpdate cameraUpdate = cameraOverheadUpdate();
+    if (cameraUpdate != null) {
+      NavigationCameraUpdate navUpdate = new NavigationCameraUpdate(cameraUpdate);
+      navigationMap.retrieveCamera().update(navUpdate);
+    }
   }
 
   @OnClick(R.id.cancelNavigationFab)
@@ -386,6 +400,15 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
     );
   }
 
+  @Nullable
+  private CameraUpdate cameraOverheadUpdate() {
+    if (lastLocation == null) {
+      return null;
+    }
+    CameraPosition cameraPosition = buildCameraPositionFrom(lastLocation, DEFAULT_BEARING);
+    return CameraUpdateFactory.newCameraPosition(cameraPosition);
+  }
+
   @NonNull
   private CameraPosition buildCameraPositionFrom(Location location, double bearing) {
     return new CameraPosition.Builder()
@@ -407,6 +430,8 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
   private void resetMapAfterNavigation() {
     navigationMap.removeRoute();
     navigationMap.clearMarkers();
+    addEventToHistoryFile("cancel_navigation");
+    executeStoreHistoryTask();
     navigation.stopNavigation();
     moveCameraOverhead();
   }
@@ -467,6 +492,11 @@ public class ComponentNavigationActivity extends HistoryActivity implements OnMa
     } else {
       vibrator.vibrate(ONE_HUNDRED_MILLISECONDS);
     }
+  }
+
+  private void addEventToHistoryFile(String type) {
+    double secondsFromEpoch = new Date().getTime() / 1000.0;
+    navigation.addHistoryEvent(type, Double.toString(secondsFromEpoch));
   }
 
   @NonNull

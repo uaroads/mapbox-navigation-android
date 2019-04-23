@@ -21,6 +21,7 @@ jobs:
       JVM_OPTS: -Xmx3200m
       BUILDTYPE: Debug
       IS_LOCAL_DEVELOPMENT: false
+      GRADLE_OPTS: -Xmx2048m -Dorg.gradle.daemon=false
     steps:
       - checkout
       - restore_cache:
@@ -38,7 +39,7 @@ jobs:
       - run:
           name: Run unit-test, generate Jacoco test report and Post code coverage report to Codecov.io
           command: |
-            ./gradlew testDebugUnitTestCoverage --no-daemon
+            ./gradlew testDebugUnitTestCoverage
             pip install --user codecov && /root/.local/bin/codecov
       - run:
           name: Build release to test ProGuard rules
@@ -175,6 +176,13 @@ jobs:
             #!/bin/bash
             echo "${MAPBOX_DEVELOPER_CONFIG}" > /root/code/app/src/main/res/values/developer-config.xml
             echo "${PLAY_PUBLISH_AUTH_JSON}" > android-gl-native-15d95ab30d0f.json
+      - run:
+          name: Crashlytics setup
+          command: |
+            #!/bin/bash
+            echo "apply plugin: 'io.fabric'" >> /root/code/app/build.gradle
+            echo "apply plugin: 'com.google.gms.google-services'" >> /root/code/app/build.gradle
+            echo "${GOOGLE_SERVICES_JSON}" > /root/code/app/google-services.json
       - run:
           name: Release to Google Play
           command: ./gradlew :app:publishRelease

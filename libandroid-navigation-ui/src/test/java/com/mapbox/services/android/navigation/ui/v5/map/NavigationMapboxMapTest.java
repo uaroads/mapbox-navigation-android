@@ -1,10 +1,12 @@
 package com.mapbox.services.android.navigation.ui.v5.map;
 
 import com.mapbox.api.directions.v5.models.DirectionsRoute;
+import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.location.LocationComponent;
 import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.Style;
+import com.mapbox.mapboxsdk.plugins.annotation.SymbolOptions;
 import com.mapbox.mapboxsdk.style.sources.GeoJsonSource;
 import com.mapbox.mapboxsdk.style.sources.Source;
 import com.mapbox.mapboxsdk.style.sources.VectorSource;
@@ -166,7 +168,9 @@ public class NavigationMapboxMapTest {
     MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
     NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
     NavigationCamera mapCamera = mock(NavigationCamera.class);
-    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate, mapRoute, mapCamera);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
 
     theNavigationMap.onStart();
 
@@ -179,7 +183,9 @@ public class NavigationMapboxMapTest {
     MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
     NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
     NavigationCamera mapCamera = mock(NavigationCamera.class);
-    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate, mapRoute, mapCamera);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
 
     theNavigationMap.onStop();
 
@@ -192,7 +198,9 @@ public class NavigationMapboxMapTest {
     MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
     NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
     NavigationCamera mapCamera = mock(NavigationCamera.class);
-    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate, mapRoute, mapCamera);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
 
     theNavigationMap.onStart();
 
@@ -205,7 +213,9 @@ public class NavigationMapboxMapTest {
     MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
     NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
     NavigationCamera mapCamera = mock(NavigationCamera.class);
-    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate, mapRoute, mapCamera);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
 
     theNavigationMap.onStop();
 
@@ -229,6 +239,51 @@ public class NavigationMapboxMapTest {
   }
 
   @Test
+  public void updateLocationFpsThrottleEnabled_locationFpsUpdateEnabledIsSet() {
+    MapWayName mapWayName = mock(MapWayName.class);
+    MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
+    NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
+    NavigationCamera mapCamera = mock(NavigationCamera.class);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
+
+    theNavigationMap.updateLocationFpsThrottleEnabled(false);
+
+    verify(locationFpsDelegate).updateEnabled(eq(false));
+  }
+
+  @Test
+  public void onStart_locationFpsUpdateOnStartIsCalled() {
+    MapWayName mapWayName = mock(MapWayName.class);
+    MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
+    NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
+    NavigationCamera mapCamera = mock(NavigationCamera.class);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
+
+    theNavigationMap.onStart();
+
+    verify(locationFpsDelegate).onStart();
+  }
+
+  @Test
+  public void onStop_locationFpsUpdateOnStopIsCalled() {
+    MapWayName mapWayName = mock(MapWayName.class);
+    MapFpsDelegate mapFpsDelegate = mock(MapFpsDelegate.class);
+    NavigationMapRoute mapRoute = mock(NavigationMapRoute.class);
+    NavigationCamera mapCamera = mock(NavigationCamera.class);
+    LocationFpsDelegate locationFpsDelegate = mock(LocationFpsDelegate.class);
+    NavigationMapboxMap theNavigationMap = new NavigationMapboxMap(mapWayName, mapFpsDelegate,
+      mapRoute, mapCamera, locationFpsDelegate);
+
+    theNavigationMap.onStop();
+
+    verify(locationFpsDelegate).onStop();
+  }
+
+  @Test
   public void onInitializeWayName_exisitingV8StreetSourceIsUsed() {
     Style style = mock(Style.class);
     String urlV7 = "mapbox://mapbox.mapbox-streets-v8";
@@ -242,6 +297,28 @@ public class NavigationMapboxMapTest {
     new NavigationMapboxMap(mapboxMap, layerInteractor, adjustor);
 
     verify(layerInteractor).addStreetsLayer("composite", "road");
+  }
+
+  @Test
+  public void addDestinationMarker_navigationSymbolManagerReceivesPosition() {
+    Point position = mock(Point.class);
+    NavigationSymbolManager navigationSymbolManager = mock(NavigationSymbolManager.class);
+    NavigationMapboxMap map = new NavigationMapboxMap(navigationSymbolManager);
+
+    map.addDestinationMarker(position);
+
+    verify(navigationSymbolManager).addDestinationMarkerFor(position);
+  }
+
+  @Test
+  public void addCustomMarker_navigationSymbolManagerReceivesOptions() {
+    SymbolOptions options = mock(SymbolOptions.class);
+    NavigationSymbolManager navigationSymbolManager = mock(NavigationSymbolManager.class);
+    NavigationMapboxMap map = new NavigationMapboxMap(navigationSymbolManager);
+
+    map.addCustomMarker(options);
+
+    verify(navigationSymbolManager).addCustomSymbolFor(options);
   }
 
   private List<Source> buildMockSourcesWith(String url) {

@@ -144,7 +144,7 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
     boolean isWayNameVisible = wayNameView.getVisibility() == VISIBLE;
     NavigationViewInstanceState navigationViewInstanceState = new NavigationViewInstanceState(
       bottomSheetBehaviorState, recenterBtn.getVisibility(), instructionView.isShowingInstructionList(),
-      isWayNameVisible, wayNameView.retrieveWayNameText());
+      isWayNameVisible, wayNameView.retrieveWayNameText(), navigationViewModel.isMuted());
     String instanceKey = getContext().getString(R.string.navigation_view_instance_state);
     outState.putParcelable(instanceKey, navigationViewInstanceState);
     outState.putBoolean(getContext().getString(R.string.navigation_running), navigationViewModel.isRunning());
@@ -167,6 +167,7 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
     wayNameView.updateWayNameText(navigationViewInstanceState.getWayNameText());
     resetBottomSheetState(navigationViewInstanceState.getBottomSheetBehaviorState());
     updateInstructionListState(navigationViewInstanceState.isInstructionViewVisible());
+    updateInstructionMutedState(navigationViewInstanceState.isMuted());
     mapInstanceState = savedInstanceState.getParcelable(MAP_INSTANCE_STATE_KEY);
   }
 
@@ -242,14 +243,6 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
     return summaryBehavior.getState() == BottomSheetBehavior.STATE_HIDDEN;
   }
 
-
-  @Override
-  public void updateCameraTrackingMode(int trackingMode) {
-    if (navigationMap != null) {
-      navigationMap.updateCameraTrackingMode(trackingMode);
-    }
-  }
-
   @Override
   public void resetCameraPosition() {
     if (navigationMap != null) {
@@ -283,13 +276,7 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
   @Override
   public void addMarker(Point position) {
     if (navigationMap != null) {
-      navigationMap.addMarker(getContext(), position);
-    }
-  }
-
-  public void clearMarkers() {
-    if (navigationMap != null) {
-      navigationMap.clearMarkers();
+      navigationMap.addDestinationMarker(position);
     }
   }
 
@@ -582,6 +569,12 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
     }
   }
 
+  private void updateInstructionMutedState(boolean isMuted) {
+    if (isMuted) {
+      ((SoundButton) instructionView.retrieveSoundButton()).soundFabOff();
+    }
+  }
+
   private int[] buildRouteOverviewPadding(Context context) {
     Resources resources = context.getResources();
     int leftRightPadding = (int) resources.getDimension(R.dimen.route_overview_left_right_padding);
@@ -613,8 +606,8 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
 
   private void initializeNavigation(NavigationViewOptions options) {
     establish(options);
-    MapboxNavigation navigation = navigationViewModel.initialize(options);
-    initializeNavigationListeners(options, navigation);
+    navigationViewModel.initialize(options);
+    initializeNavigationListeners(options, navigationViewModel);
     setupNavigationMapboxMap(options);
 
     if (!isSubscribed) {
@@ -672,9 +665,9 @@ public class NavigationView extends CoordinatorLayout implements LifecycleObserv
     summaryBottomSheet.setTimeFormat(timeFormatType);
   }
 
-  private void initializeNavigationListeners(NavigationViewOptions options, MapboxNavigation navigation) {
-    navigationMap.addProgressChangeListener(navigation);
-    navigationViewEventDispatcher.initializeListeners(options, navigation);
+  private void initializeNavigationListeners(NavigationViewOptions options, NavigationViewModel navigationViewModel) {
+    navigationMap.addProgressChangeListener(navigationViewModel.retrieveNavigation());
+    navigationViewEventDispatcher.initializeListeners(options, navigationViewModel);
   }
 
   private void setupNavigationMapboxMap(NavigationViewOptions options) {
