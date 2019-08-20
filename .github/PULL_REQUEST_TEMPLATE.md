@@ -25,7 +25,7 @@ Please include all the media files to give some context about what's being imple
 
 Please describe the manual tests that you ran to verify your changes
 
-- [ ] I have tested locally (including `SNAPSHOT` upstream dependencies if needed)
+- [ ] I have tested locally (including `SNAPSHOT` upstream dependencies if needed) through testapp/demo app and run all activities to avoid regressions
 - [ ] I have tested via a test drive, or a simulation/mock location app
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
@@ -34,6 +34,7 @@ Please describe the manual tests that you ran to verify your changes
 
 - [ ] My code follows the style guidelines of this project
 - [ ] I have performed a self-review of my own code
+- [ ] I have updated the `CHANGELOG` including this PR
 <!-- - [ ] I have added an `Activity` example in the test app showing the new feature implemented (where applicable) -->
 <!-- - [ ] I have made corresponding changes to the documentation (where applicable) -->
 <!-- - [ ] Any changes to strings have been published to our translation tool (where applicable) -->

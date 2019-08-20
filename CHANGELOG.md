@@ -2,6 +2,52 @@
 
 Mapbox welcomes participation and contributions from everyone.
 
+### v0.42.0 - 
+
+* Fix NavigationStepData regression from [#1890](https://github.com/mapbox/mapbox-navigation-android/pull/1890)
+* Bump mapbox-android-sdk version to 8.2.1 [#2013](https://github.com/mapbox/mapbox-navigation-android/pull/2013)
+* Bump Mapbox Annotation Plugin version to v8 0.7.0 [#2014](https://github.com/mapbox/mapbox-navigation-android/pull/2014)
+* Auto generate license for the SDK [#2002](https://github.com/mapbox/mapbox-navigation-android/pull/2002)
+* Update translations to latest Transifex [#2003](https://github.com/mapbox/mapbox-navigation-android/pull/2003)
+
+### v0.41.0 - July 11, 2019
+
+* Fix navigation camera tracking the puck [#1995](https://github.com/mapbox/mapbox-navigation-android/pull/1995)
+* Move events from telemetry to nav sdk [#1890](https://github.com/mapbox/mapbox-navigation-android/pull/1890)
+* Fix DynamicCamera#CameraPosition.zoom NPE [#1979](https://github.com/mapbox/mapbox-navigation-android/pull/1979)
+* Update ComponentNavigationActivity example [#1978](https://github.com/mapbox/mapbox-navigation-android/pull/1978)
+
+### v0.40.0 - June 12, 2019
+
+* Fix notification instruction not updated for arrive maneuver [#1959](https://github.com/mapbox/mapbox-navigation-android/pull/1959)
+* Bump mapbox-navigation-native version to 6.2.1 [#1955](https://github.com/mapbox/mapbox-navigation-android/pull/1955)
+
+### v0.39.0 - May 29, 2019
+
+* Add check to avoid ArrayIndexOutOfBoundsExceptions from MapRouteLine#drawWayPoints [#1951](https://github.com/mapbox/mapbox-navigation-android/pull/1951)
+* Fix way name truncating too soon [#1947](https://github.com/mapbox/mapbox-navigation-android/pull/1947)
+* Fix instruction icon mismatch in between banner and notification [#1946](https://github.com/mapbox/mapbox-navigation-android/pull/1946)
+
+### v0.38.0 - May 16, 2019
+
+* Add option to load offline maps database for NavigationView [#1895](https://github.com/mapbox/mapbox-navigation-android/pull/1895)
+* Update Maps SDK to 7.4.0 [#1907](https://github.com/mapbox/mapbox-navigation-android/pull/1907)
+* Added walking options [#1934](https://github.com/mapbox/mapbox-navigation-android/pull/1934)
+* SoundButton clicklistener wasn't set properly [#1937](https://github.com/mapbox/mapbox-navigation-android/pull/1937)
+
+### v0.37.0 - May 1, 2019
+
+* Added check for legs to route refresh [#1916](https://github.com/mapbox/mapbox-navigation-android/pull/1916)
+* Improve PR Template [#1915](https://github.com/mapbox/mapbox-navigation-android/pull/1915)
+* Fix NavigationLauncherActivity camera animations [#1913](https://github.com/mapbox/mapbox-navigation-android/pull/1913)
+* Fix Navigation Launcher test app Activity incorrect profile regression [#1914](https://github.com/mapbox/mapbox-navigation-android/pull/1914)
+* Update Java Services to 4.7.0 [#1906](https://github.com/mapbox/mapbox-navigation-android/pull/1906)
+* Add connectivity status check to SpeechPlayer provider [#1901](https://github.com/mapbox/mapbox-navigation-android/pull/1901)
+* Fix intermediate way point arrival not triggered [#1908](https://github.com/mapbox/mapbox-navigation-android/pull/1908)
+* Check for valid DirectionsRoute in RouteRefresh [#1909](https://github.com/mapbox/mapbox-navigation-android/pull/1909)
+* ExampleActivity refactor for simplicity/stability [#1884](https://github.com/mapbox/mapbox-navigation-android/pull/1884)
+* Allow default notification color setting via MapboxNavigationOptions [#1899](https://github.com/mapbox/mapbox-navigation-android/pull/1899)
+
 ### v0.36.0 - April 17, 2019
 
 Note: This release breaks `SEMVER` / contains API breaking changes. Please consult this [migration guide](https://github.com/mapbox/mapbox-navigation-android/wiki/0.36.0-Migration-Guide) for the necessary updates required.

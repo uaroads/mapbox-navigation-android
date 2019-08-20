@@ -7,6 +7,7 @@ import com.mapbox.api.directions.v5.models.DirectionsRoute;
 import com.mapbox.api.directions.v5.models.LegStep;
 import com.mapbox.api.directions.v5.models.RouteLeg;
 import com.mapbox.api.directions.v5.models.StepIntersection;
+import com.mapbox.geojson.Geometry;
 import com.mapbox.geojson.Point;
 import com.mapbox.navigator.BannerInstruction;
 import com.mapbox.navigator.NavigationStatus;
@@ -34,6 +35,7 @@ class NavigationRouteProcessor {
   private static final int FIRST_BANNER_INSTRUCTION = 0;
   private final RouteProgressStateMap progressStateMap = new RouteProgressStateMap();
   private RouteProgress previousRouteProgress;
+  private NavigationStatus previousStatus;
   private DirectionsRoute route;
   private RouteLeg currentLeg;
   private LegStep currentStep;
@@ -43,9 +45,12 @@ class NavigationRouteProcessor {
   private List<StepIntersection> currentIntersections;
   private List<Pair<StepIntersection, Double>> currentIntersectionDistances;
   private CurrentLegAnnotation currentLegAnnotation;
+  private Geometry routeGeometry;
+  private Geometry routeGeometryWithBuffer;
 
   RouteProgress buildNewRouteProgress(MapboxNavigator navigator, NavigationStatus status, DirectionsRoute route) {
-    updateRoute(route);
+    previousStatus = status;
+    updateRoute(route, navigator);
     return buildRouteProgressFrom(status, navigator);
   }
 
@@ -58,9 +63,16 @@ class NavigationRouteProcessor {
     return previousRouteProgress;
   }
 
-  private void updateRoute(DirectionsRoute route) {
+  @Nullable
+  NavigationStatus retrievePreviousStatus() {
+    return previousStatus;
+  }
+
+  private void updateRoute(DirectionsRoute route, MapboxNavigator navigator) {
     if (this.route == null || !this.route.equals(route)) {
       this.route = route;
+      routeGeometry = navigator.retrieveRouteGeometry();
+      routeGeometryWithBuffer = navigator.retrieveRouteGeometryWithBuffer();
     }
   }
 
@@ -107,6 +119,7 @@ class NavigationRouteProcessor {
       .inTunnel(status.getInTunnel())
       .currentState(currentRouteState);
 
+    addRouteGeometries(progressBuilder);
     addVoiceInstructions(status, progressBuilder);
     addBannerInstructions(status, navigator, progressBuilder);
     addUpcomingStepPoints(progressBuilder);
@@ -139,6 +152,11 @@ class NavigationRouteProcessor {
     if (upcomingStepPoints != null && !upcomingStepPoints.isEmpty()) {
       progressBuilder.upcomingStepPoints(upcomingStepPoints);
     }
+  }
+
+  private void addRouteGeometries(RouteProgress.Builder progressBuilder) {
+    progressBuilder.routeGeometry(routeGeometry);
+    progressBuilder.routeGeometryWithBuffer(routeGeometryWithBuffer);
   }
 
   private void addVoiceInstructions(NavigationStatus status, RouteProgress.Builder progressBuilder) {
